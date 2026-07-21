@@ -1,0 +1,43 @@
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# 打包 / 构建产物
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+ENV/
+
+# ---------- IDE / 编辑器 ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---------- 操作系统 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- 本地项目数据 ----------
+.codebuddy/
+
+# ---------- 日志 / 临时文件 ----------
+*.log
+*.tmp
+chess_save.txt
+engine/chess_save.txt
+
+# ---------- 说明 ----------
+# 引擎二进制（engine/ 下的 *.exe 以及 pikafish.nnue）为运行必需文件，
+# 默认不忽略；如需减小仓库体积，可取消下方注释并自行另行分发引擎：
+# *.exe
+# *.nnue
