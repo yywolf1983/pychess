@@ -226,22 +226,54 @@ class MainWindow:
         self.edit_button = self.side_buttons[0]['rect']
     
     def _text_surface(self, text, font_size='large', color=(0, 0, 0)):
-        if not self.pil_available:
+        """获取文字 Surface：优先 PIL，失败则回退 pygame 内置字体（部分系统无 CJK 字体时仅显示西文）。"""
+        if not text:
             return None
-        from PIL import Image, ImageDraw
-        if font_size == 'large':
-            font = self.pil_font
-        elif font_size == 'xsmall':
-            font = self.pil_xs_font
-        else:
-            font = self.pil_small_font
-        canvas = Image.new('RGBA', (1000, 200), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(canvas)
-        draw.text((20, 20), text, font=font, fill=color)
-        bbox = draw.textbbox((20, 20), text, font=font)
-        canvas = canvas.crop((max(0, bbox[0] - 4), max(0, bbox[1] - 4),
-                              bbox[2] + 4, bbox[3] + 4))
-        return pygame.image.fromstring(canvas.tobytes(), canvas.size, canvas.mode).convert_alpha()
+
+        # 路径1：PIL 高质量 CJK 渲染
+        if self.pil_available:
+            try:
+                from PIL import Image, ImageDraw
+                if font_size == 'large':
+                    font = self.pil_font
+                elif font_size == 'xsmall':
+                    font = self.pil_xs_font
+                else:
+                    font = self.pil_small_font
+
+                canvas = Image.new('RGBA', (1200, 300), (0, 0, 0, 0))
+                draw = ImageDraw.Draw(canvas)
+                draw.text((20, 20), text, font=font, fill=color)
+
+                # textbbox 仅 Pillow ≥8.2 支持，低版本回退 textsize
+                try:
+                    bbox = draw.textbbox((20, 20), text, font=font)
+                except AttributeError:
+                    w, h = draw.textsize(text, font=font)
+                    bbox = (20, 20, 20 + w, 20 + h)
+
+                canvas = canvas.crop((max(0, bbox[0] - 4), max(0, bbox[1] - 4),
+                                      bbox[2] + 4, bbox[3] + 4))
+                return pygame.image.fromstring(
+                    canvas.tobytes(), canvas.size, canvas.mode
+                ).convert_alpha()
+            except Exception:
+                pass  # 回退到 pygame 路径
+
+        # 路径2：pygame 内置字体兜底（仅西文 / 部分 CJK 系统字体）
+        try:
+            if not hasattr(self, '_pg_fonts'):
+                pygame.font.init()
+                self._pg_fonts = {
+                    'large': pygame.font.SysFont(None, 42),
+                    'small': pygame.font.SysFont(None, 28),
+                    'xsmall': pygame.font.SysFont(None, 18),
+                    'medium': pygame.font.SysFont(None, 34),
+                }
+            pg_font = self._pg_fonts.get(font_size, self._pg_fonts['small'])
+            return pg_font.render(str(text), True, color).convert_alpha()
+        except Exception:
+            return None
 
     def _draw_text(self, text, x, y, font_size='large', color=(0, 0, 0)):
         """以 (x, y) 为中心绘制文字。"""
