@@ -70,10 +70,30 @@ class TextRenderMixin:
 
     def _text_surface(self, text, font_size='large', color=(0, 0, 0)):
         """获取文字 Surface：优先用解析到的中文字体（PIL 高质量 / pygame 兜底），
-        保证所有系统下中文正常显示；若该字体缺失才回退到西文默认字体。"""
+        保证所有系统下中文正常显示；若该字体缺失才回退到西文默认字体。
+
+        加入缓存：PIL 渲染中文较昂贵，菜单/棋谱/着法名等重复文本直接复用 Surface，
+        避免每帧重复渲染导致界面卡顿。
+        """
         if not text:
             return None
+        try:
+            cache = self._text_cache
+        except AttributeError:
+            cache = {}
+            self._text_cache = cache
+        # color 可能是 3 元组或 4 元组，均可哈希
+        key = (text, font_size, color)
+        hit = cache.get(key)
+        if hit is not None:
+            return hit
+        surf = self._render_text(text, font_size, color)
+        if surf is not None and len(cache) < 4000:
+            cache[key] = surf
+        return surf
 
+    def _render_text(self, text, font_size='large', color=(0, 0, 0)):
+        """实际渲染文字（无缓存），供 _text_surface 调用。"""
         # 各档位对应的像素字号
         size_map = {'large': 42, 'medium': 34, 'small': 28, 'ssmall': 21, 'xsmall': 18, 'tiny': 13}
         px = size_map.get(font_size, 28)

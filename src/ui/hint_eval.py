@@ -52,10 +52,12 @@ class HintEvalMixin:
 
 
     def on_hint_button(self):
-        """支招按钮：思考中再次点击即「中断」；AI 思考中也复用此按钮中断（立即落子）。"""
+        """支招按钮：AI 思考中点击即中断；支招计算中点击即中断支招。"""
         if self.is_ai_thinking:
-            # 中断 AI 思考：让引擎立即落当前最佳着法（避免无限等待深度搜索）
+            # 让引擎立即停止深入搜索，尽快返回
             self.ai.should_stop = True
+            # 请求中断：主循环将丢弃 AI 着法并切换为双人模式（行棋方不变）
+            self._ai_abort_requested = True
             return
         if self.hint_loading:
             self.interrupt_hint()
@@ -418,6 +420,10 @@ class HintEvalMixin:
 
         # 过滤尚未计算的分步评分（加载棋谱时后台逐步填充，可能含 None）
         pts_data = [(i, v) for i, v in enumerate(hist) if v is not None]
+        # 长对局限制采样点数，避免每帧绘制上千条竖线 + 平滑曲线导致卡顿
+        if len(pts_data) > 240:
+            step = (len(pts_data) - 1) // 240 + 1
+            pts_data = pts_data[::step]
         if not pts_data:
             self._draw_text('暂无评分数据', plot.centerx, cy, 'small', (150, 162, 180))
             return
