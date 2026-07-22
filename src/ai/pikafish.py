@@ -13,6 +13,17 @@ from ..game.rule import (
 )
 
 
+def _make_executable(engine_path: str):
+    """类 Unix 系统下确保引擎二进制具备可执行权限（仓库克隆后执行位可能丢失）。"""
+    if sys.platform == 'win32':
+        return
+    try:
+        mode = os.stat(engine_path).st_mode
+        os.chmod(engine_path, mode | 0o111)
+    except Exception:
+        pass
+
+
 class MoveWithScore:
     def __init__(self, move: Move = None, score: int = 0, reply_move: Move = None,
                  pv_uci: list = None):
@@ -39,7 +50,8 @@ class PikafishAI:
     _cached_engine_path = None
 
     def _get_engine_path(self):
-        base_dir = os.path.join(os.path.dirname(__file__), '../../engine')
+        # 基于本模块文件定位引擎目录（相对路径，跨系统/跨安装位置均可用）
+        base_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), '../../engine'))
 
         candidates = []
         if sys.platform == 'darwin':
@@ -93,6 +105,7 @@ class PikafishAI:
         有些变体(如 avxvnni)能通过 uci 握手，但开始搜索时会崩溃，
         只有能返回 bestmove 且不崩溃的引擎才被认为是可用的。"""
         try:
+            _make_executable(engine_path)
             proc = subprocess.Popen(
                 [engine_path],
                 stdin=subprocess.PIPE,
@@ -133,7 +146,9 @@ class PikafishAI:
                 return False
 
             if nnue_ok:
-                send(f'setoption name EvalFile value {os.path.abspath(nnue_path)}')
+                # 统一为正斜杠，跨平台兼容 UCI 协议中的路径
+                ep = os.path.abspath(nnue_path).replace('\\', '/')
+                send(f'setoption name EvalFile value {ep}')
             send('setoption name Threads value 1')
             send('setoption name Hash value 64')
             send('isready')
@@ -182,6 +197,7 @@ class PikafishAI:
                 return
         
         try:
+            _make_executable(engine_path)
             self.process = subprocess.Popen(
                 [engine_path],
                 stdin=subprocess.PIPE,
@@ -213,7 +229,7 @@ class PikafishAI:
                 if not os.path.exists(nnue_path):
                     nnue_path = os.path.join(project_root, 'pikafish.nnue')
                 if os.path.exists(nnue_path):
-                    nnue_path = os.path.abspath(nnue_path)
+                    nnue_path = os.path.abspath(nnue_path).replace('\\', '/')
                     self._send_command(f'setoption name EvalFile value {nnue_path}')
                 self._send_command('setoption name Threads value 1')
                 self._send_command('setoption name Hash value 128')

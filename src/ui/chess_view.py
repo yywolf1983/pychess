@@ -34,10 +34,26 @@ class ChessView:
         self._piece_cy_off = -self.piece_size // 2
 
         self.images = self._load_images()
-        
+
+        # 棋盘翻转：参考 Android 版「旋转棋盘」按钮，将整个棋盘视图做 180° 镜像，
+        # 红/黑方上下对调。棋子与文字仍保持正向绘制（仅棋盘布局旋转）。
+        self.board_flipped = False
+
         self.think_index = 0
         self.think_flag = 0
-    
+
+    def toggle_flip(self):
+        """翻转棋盘视角（红/黑上下对调）。"""
+        self.board_flipped = not self.board_flipped
+
+    def _gx_p(self, c):
+        """物理列 c（0..8）的屏幕 x 像素；翻转时映射到 8-c 做水平镜像。"""
+        return self._gx(8 - c) if self.board_flipped else self._gx(c)
+
+    def _gy_p(self, r):
+        """物理行 r（0..9）的屏幕 y 像素；翻转时映射到 9-r 做垂直镜像。"""
+        return self._gy(9 - r) if self.board_flipped else self._gy(r)
+
     def _load_images(self):
         images = {}
         
@@ -157,6 +173,8 @@ class ChessView:
                 self.images['board'], 
                 (self.board_width, self.board_height)
             )
+            # 棋盘底图本身上下对称，无需旋转即可与翻转后的棋子布局对齐；
+            # 旋转反而会让「楚河漢界」文字倒置，故保持原样。
             self.screen.blit(scaled_board, (0, 0))
         else:
             self._draw_chessboard_grid()
@@ -189,25 +207,25 @@ class ChessView:
     def _draw_chessboard_grid(self):
         # 棋盘底图已自带网格/底色；此处仅用图片真实格点重绘黑色网格线，覆盖底图误差。
         for x in range(9):
-            lx = self._gx(x)
+            lx = self._gx_p(x)
             pygame.draw.line(self.screen, (0, 0, 0), (lx, self._gy(0)), (lx, self._gy(9)), 1)
         for y in range(10):
-            ly = self._gy(y)
+            ly = self._gy_p(y)
             pygame.draw.line(self.screen, (0, 0, 0), (self._gx(0), ly), (self._gx(8), ly), 1)
         self._draw_palace()
 
     def _draw_palace(self):
         pl = self.padding_left
         pt = self.padding_top
-        # 九宫斜线用图片真实格点（列3-5、行0-2、行7-9）
+        # 九宫斜线用图片真实格点（列3-5、行0-2、行7-9）；翻转时经 _gx_p/_gy_p 自动镜像
         pygame.draw.line(self.screen, (0, 0, 0),
-                         (self._gx(3), self._gy(0)), (self._gx(5), self._gy(2)), 2)
+                         (self._gx_p(3), self._gy_p(0)), (self._gx_p(5), self._gy_p(2)), 2)
         pygame.draw.line(self.screen, (0, 0, 0),
-                         (self._gx(5), self._gy(0)), (self._gx(3), self._gy(2)), 2)
+                         (self._gx_p(5), self._gy_p(0)), (self._gx_p(3), self._gy_p(2)), 2)
         pygame.draw.line(self.screen, (0, 0, 0),
-                         (self._gx(3), self._gy(7)), (self._gx(5), self._gy(9)), 2)
+                         (self._gx_p(3), self._gy_p(7)), (self._gx_p(5), self._gy_p(9)), 2)
         pygame.draw.line(self.screen, (0, 0, 0),
-                         (self._gx(5), self._gy(7)), (self._gx(3), self._gy(9)), 2)
+                         (self._gx_p(5), self._gy_p(7)), (self._gx_p(3), self._gy_p(9)), 2)
 
     def _draw_coordinates(self):
         pass
@@ -217,9 +235,8 @@ class ChessView:
             for x in range(9):
                 piece_id = self.chess_info.piece[y][x]
                 if piece_id > 0:
-                    draw_y = 9 - y
-                    screen_x = self._gx(x) + self._piece_cx_off
-                    screen_y = self._gy(draw_y) + self._piece_cy_off
+                    screen_x = self._gx_p(x) + self._piece_cx_off
+                    screen_y = self._gy_p(9 - y) + self._piece_cy_off
                     
                     if piece_id <= 7:
                         idx = piece_id - 1
@@ -241,9 +258,8 @@ class ChessView:
             piece_id = self.chess_info.piece[y][x]
             
             if piece_id > 0:
-                draw_y = 9 - y
-                screen_x = self._gx(x) + self._piece_cx_off
-                screen_y = self._gy(draw_y) + self._piece_cy_off
+                screen_x = self._gx_p(x) + self._piece_cx_off
+                screen_y = self._gy_p(9 - y) + self._piece_cy_off
                 
                 is_red_piece = piece_id >= 8
                 # 颜色提示：选中格子叠加半透明底色（红方暖色 / 黑方冷色）
@@ -261,9 +277,8 @@ class ChessView:
     def _draw_possible_moves(self):
         if self.chess_info.ret:
             for pos in self.chess_info.ret:
-                draw_y = 9 - pos.y
-                screen_x = self._gx(pos.x) + self._piece_cx_off
-                screen_y = self._gy(draw_y) + self._piece_cy_off
+                screen_x = self._gx_p(pos.x) + self._piece_cx_off
+                screen_y = self._gy_p(9 - pos.y) + self._piece_cy_off
                 
                 if self.images['pot']:
                     pot_scaled = pygame.transform.scale(
@@ -283,10 +298,10 @@ class ChessView:
             draw_pre_y = 9 - pre_y
             draw_cur_y = 9 - cur_y
             
-            pre_screen_x = self._gx(pre_x) + self._piece_cx_off
-            pre_screen_y = self._gy(draw_pre_y) + self._piece_cy_off
-            cur_screen_x = self._gx(cur_x) + self._piece_cx_off
-            cur_screen_y = self._gy(draw_cur_y) + self._piece_cy_off
+            pre_screen_x = self._gx_p(pre_x) + self._piece_cx_off
+            pre_screen_y = self._gy_p(draw_pre_y) + self._piece_cy_off
+            cur_screen_x = self._gx_p(cur_x) + self._piece_cx_off
+            cur_screen_y = self._gy_p(draw_cur_y) + self._piece_cy_off
             
             is_black_piece = piece_id >= 1 and piece_id <= 7
             box_img = self.images['b_box'] if is_black_piece else self.images['r_box']
@@ -301,21 +316,30 @@ class ChessView:
                 overlay_surface.fill((*overlay_color, 20))
                 self.screen.blit(overlay_surface, (cur_screen_x, cur_screen_y))
     
+    # 提示线条配色：红方着法红色，黑方着法蓝色
+    HINT_RED = (235, 40, 40)
+    HINT_BLUE = (40, 110, 235)
+
     def _draw_suggestions(self):
         if self.chess_info.suggest_moves and self.chess_info.suggest_move_labels:
             # 线条粗细 / 端点圆随棋盘等比缩放（基准 scale=0.9）
             f = self.scale / 0.9
-            step_colors = [
-                (255, 0, 0), (0, 128, 255), (0, 180, 0), (255, 128, 0),
-                (180, 0, 255), (255, 0, 128), (128, 128, 0), (0, 180, 180)
-            ]
             track = getattr(self.chess_info, 'suggest_track', False)
+            is_red_go = self.chess_info.is_red_go
+
+            # 第 i 步（推荐线内从 0 计）的执子方：先手(偶数步)=当前方、后手(奇数步)=对方
+            def step_color(i):
+                return self.HINT_RED if ((i % 2 == 0) == is_red_go) else self.HINT_BLUE
+
             if track:
-                # 跟线模式：将整条推荐线（剩余着法）逐段绘出，提示玩家续走
+                # 跟线模式：将整条推荐线（剩余着法）逐段绘出，提示玩家续走。
+                # 先手(偶数步)实线、后手(奇数步)虚线略细，颜色按执子方红/蓝。
                 for i, move in enumerate(self.chess_info.suggest_moves):
-                    color = step_colors[i % len(step_colors)]
-                    self._draw_step(move, color, solid=True,
-                                    width=max(3, int(5 * f)), radius=max(10, int(20 * f)))
+                    solid = (i % 2 == 0)
+                    color = step_color(i)
+                    width = max(3, int(5 * f)) if solid else max(2, int(4 * f))
+                    radius = max(10, int(20 * f)) if solid else max(8, int(15 * f))
+                    self._draw_step(move, color, solid=solid, width=width, radius=radius)
                 return
             # 仅高亮“当前选中”的那一路支招（参照 Android 单步高亮，避免线条混乱）
             sel_index = getattr(self.chess_info, 'suggest_sel_index', 0)
@@ -323,17 +347,17 @@ class ChessView:
                 sel_index = 0
             replies = getattr(self.chess_info, 'suggest_replies', None)
             move = self.chess_info.suggest_moves[sel_index]
-            color = step_colors[sel_index % len(step_colors)]
 
-            # 当前方一步（实线箭头 + 起点高亮圆圈）
+            # 当前方一步（先手：实线箭头 + 起点高亮圆圈），颜色按执子方
+            color = self.HINT_RED if is_red_go else self.HINT_BLUE
             self._draw_step(move, color, solid=True,
                             width=max(3, int(5 * f)), radius=max(10, int(20 * f)))
 
-            # 对方一步（虚线箭头，表示应招）
+            # 对方一步（后手：虚线箭头略细，表示应招），颜色按对方执子方
             if replies is not None and sel_index < len(replies):
                 rep = replies[sel_index]
                 if rep is not None and rep.is_valid():
-                    opp_color = tuple(max(0, int(c * 0.65)) for c in color)
+                    opp_color = self.HINT_RED if (not is_red_go) else self.HINT_BLUE
                     self._draw_step(rep, opp_color, solid=False,
                                     width=max(2, int(4 * f)), radius=max(8, int(15 * f)))
 
@@ -345,10 +369,10 @@ class ChessView:
         draw_to_y = 9 - to_y
 
         # 棋子以网格交点为中心绘制，支招线条也应落在交点，避免半格错位
-        from_center_x = self._gx(from_x)
-        from_center_y = self._gy(draw_from_y)
-        to_center_x = self._gx(to_x)
-        to_center_y = self._gy(draw_to_y)
+        from_center_x = self._gx_p(from_x)
+        from_center_y = self._gy_p(draw_from_y)
+        to_center_x = self._gx_p(to_x)
+        to_center_y = self._gy_p(draw_to_y)
 
         f = self.scale / 0.9
         dx = to_center_x - from_center_x
@@ -435,6 +459,15 @@ class ChessView:
     def get_board_coordinates(self, screen_x: int, screen_y: int) -> Pos:
         screen_x = int(screen_x)
         screen_y = int(screen_y)
+
+        # 翻转时整个棋盘绕【网格中心】做 180° 反射（与棋子/网格绘制 _gx_p/_gy_p 同源），
+        # 点击坐标先以同一中心反向，再走未翻转的近邻匹配逻辑，映射回正确数据坐标。
+        if self.board_flipped:
+            gx_c = (self._gx(0) + self._gx(8)) / 2.0
+            gy_c = (self._gy(0) + self._gy(9)) / 2.0
+            screen_x = 2 * gx_c - screen_x
+            screen_y = 2 * gy_c - screen_y
+
         if screen_x < 0 or screen_x >= self.board_width:
             return Pos(-1, -1)
         
