@@ -250,11 +250,23 @@ class BoardInteractionMixin:
 
 
     def _handle_candidate_click(self, x, y):
-        """底部候选着法面板：单击某路候选选中其起点棋子（棋盘联动高亮）。"""
+        """底部候选着法面板：单击某路候选选中其起点棋子（棋盘联动高亮）；
+        双击则进入「支招演示」：按该候选的完整推荐线（PV）逐步模拟行棋。"""
         if not getattr(self, 'ai_lines', None):
             return
         for entry in self.candidate_ui:
             if entry['rect'].collidepoint(x, y):
-                self._select_hint(entry['index'])
+                idx = entry['index']
+                now = pygame.time.get_ticks()
+                last = getattr(self, '_candidate_last_click', None)
+                if last is not None and last[0] == idx and now - last[1] < 400:
+                    # 双击同一行：进入整路线模拟演示（不影响真实对局）
+                    self._candidate_last_click = None
+                    line = self.ai_lines[idx]
+                    if line.get('pv_moves'):
+                        self.start_simulation(line)
+                    return
+                self._candidate_last_click = (idx, now)
+                self._select_hint(idx)
                 return
 

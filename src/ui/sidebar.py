@@ -156,13 +156,23 @@ class SidebarMixin:
     # ------------------------------------------------------------------
     # 状态卡片（紧凑排版）
     # ------------------------------------------------------------------
+    @staticmethod
+    def _format_clock(sec):
+        sec = int(sec)
+        h = sec // 3600
+        m = (sec % 3600) // 60
+        s = sec % 60
+        if h:
+            return f'{h}:{m:02d}:{s:02d}'
+        return f'{m:02d}:{s:02d}'
+
     def _status_card_height(self):
         h = 22 + 34 + 38          # 标题 + 回合色块
         if self.chess_info.is_checked:
             h += 40
         if self._result_info():
             h += 48
-        h += 4 * 28               # 评分 / 步数 / 深度 / AI
+        h += 5 * 28               # 评分 / 步数 / 深度 / AI / 行棋时间
         if self.toast and time.time() <= self.toast_until:
             h += 56
         h += 18                   # 底部留白
@@ -212,13 +222,29 @@ class SidebarMixin:
         score_text, score_color = self._format_score(self.eval_score)
         depth = self._current_depth()
         depth_text = f'{depth} 层' if depth else '—'
-        ai_status = '思考中…' if self.is_ai_thinking else 'AI 就绪'
+        ai_status = '思考中…' if self.is_ai_thinking else ' 就绪'
         ai_col = (90, 156, 72) if not self.is_ai_thinking else (230, 132, 32)
+
+        # 当前方行棋时间：每走一步重置，实时累计；终局/模拟/摆棋时冻结
+        now = time.time()
+        if self._last_red_go is None or self._last_red_go != self.chess_info.is_red_go:
+            self._last_red_go = self.chess_info.is_red_go
+            self.turn_start_tick = now
+        res_info = self._result_info()
+        clock_frozen = bool(res_info) or self.simulating or self.editing or self.browse_index is not None
+        if clock_frozen:
+            elapsed = self._turn_elapsed_frozen
+        else:
+            elapsed = now - self.turn_start_tick
+            self._turn_elapsed_frozen = elapsed
+        turn_time_text = self._format_clock(elapsed)
+
         for label, value, vcol in (
             ('评分', score_text, score_color),
             ('步数', step_info, (60, 72, 92)),
             ('深度', depth_text, (60, 72, 92)),
             ('AI', ai_status, ai_col),
+            (f'时间', turn_time_text, (60, 72, 92)),
         ):
             self._draw_text_left(label, cx, cy + 14, 'small', (110, 122, 142))
             self._draw_text_right(value, cx + cw, cy + 14, 'small', vcol)

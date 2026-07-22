@@ -78,18 +78,15 @@ class HintEvalMixin:
     def _compute_hint(self):
         try:
             settings = Setting()
-            # 支招需要更长的变化线以在一行内展示更多步：加深搜索并放宽思考时间
-            settings.depth = max(20, self.settings.depth)
+            # 支招严格遵循设置中的各项参数（深度/思考时间/多路候选/棋力/contempt/变着）
+            settings.depth = self.settings.depth
             settings.skill_level = self.settings.skill_level
-            settings.thinking_time = min(2.5, max(1.5, self.settings.thinking_time))
-            # 支招展示最多 5 路候选着法
-            if self.ai.engine_supports_multi_pv:
-                multi_pv = 5
-            else:
-                multi_pv = 1
-            settings.multi_pv = multi_pv
+            settings.thinking_time = self.settings.thinking_time
             settings.contempt = self.settings.contempt
-            settings.force_variation = False
+            settings.force_variation = self.settings.force_variation
+            # 多路候选数依设置；引擎不支持多路时退化为单路
+            multi_pv = self.settings.multi_pv if self.ai.engine_supports_multi_pv else 1
+            settings.multi_pv = multi_pv
             results = self.ai.get_top_moves(self.chess_info, settings, top_n=multi_pv)
             self.hint_queue.put(results)
         except Exception as e:
@@ -470,16 +467,14 @@ class HintEvalMixin:
         pygame.draw.line(self.screen, (40, 52, 70), (0, y0), (w, y0), 1)
 
         lines = getattr(self, 'ai_lines', None)
-        if lines:
-            self._draw_text(f'AI 候选着法（{len(lines)}）', w // 2, y0 + 16, 'small', (170, 195, 225))
-        else:
-            # 未请求支招时展示评分曲线
-            self._draw_text('评分曲线', w // 2, y0 + 16, 'small', (170, 195, 225))
-            self._draw_eval_curve(8, y0 + 30, w - 16, h - 38)
+        if not lines:
+            # 未请求支招时展示评分曲线（紧贴棋盘底部）
+            self._draw_eval_curve(8, y0 + 4, w - 16, h - 8)
             self.candidate_scroll = 0
             return
 
-        top = y0 + 30
+        # 候选着法列表：不显示「AI 候选着法」标题，内容紧贴棋盘底部
+        top = y0 + 4
         bottom = y0 + h - 4
         row_h = 34
         content_h = len(lines) * row_h

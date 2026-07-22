@@ -39,6 +39,10 @@ class GameFlowMixin:
 
     def reset_game(self):
         self.chess_info.reset()
+        # 重置当前方行棋计时
+        self.turn_start_tick = time.time()
+        self._last_red_go = self.chess_info.is_red_go
+        self._turn_elapsed_frozen = 0.0
         self.ai.close()
         self.is_ai_thinking = False
         self.hint_loading = False
@@ -515,6 +519,13 @@ class GameFlowMixin:
             ci.suggest = None
             ci.is_machine = False
             ci.setting = self.settings
+
+            # 重置当前方行棋计时
+            self.turn_start_tick = time.time()
+            self._last_red_go = ci.is_red_go
+            self._turn_elapsed_frozen = 0.0
+
+
 
             # 恢复保存时的对局模式（含人机 / 双机），让「行棋」符合预期：
             # 轮到 AI 时自动接手，轮到玩家时等待手动走子。已终局的棋谱改为

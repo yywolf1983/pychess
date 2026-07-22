@@ -466,18 +466,25 @@ class PikafishAI:
 
             if settings:
                 depth = settings.depth
-                time_ms = min(settings.thinking_time * 1000, 2000)
+                time_ms = min(settings.thinking_time * 1000, 60000)
                 skill_level = settings.skill_level
                 contempt = settings.contempt
+                force_variation = settings.force_variation
             else:
                 depth = 15
                 time_ms = 2000
                 skill_level = 20
                 contempt = 20
+                force_variation = False
 
             self._send_command(f'setoption name Skill Level value {skill_level}')
             self._send_command(f'setoption name Contempt value {contempt}')
-            self._send_command(f'setoption name MultiPV value {top_n}')
+            multipv_value = top_n
+            if force_variation:
+                # 强制变着：加深搜索（同 _search_once）并至少开 3 路以取得变化着法
+                depth += 3
+                multipv_value = max(top_n, 3)
+            self._send_command(f'setoption name MultiPV value {multipv_value}')
             self._send_command(f'go depth {depth} movetime {time_ms}')
 
             candidates = {}  # multipv -> (move_uci, score)
@@ -503,7 +510,7 @@ class PikafishAI:
                                 except Exception:
                                     pass
                                 break
-                        if mp > top_n:
+                        if mp > multipv_value:
                             continue
                         sc = None
                         pv_list = None
@@ -546,7 +553,11 @@ class PikafishAI:
                     except Exception:
                         reply = None
                 results.append(MoveWithScore(mv, sc, reply_move=reply, pv_uci=pv_list))
-            return results[:top_n]
+            results = results[:top_n]
+            if force_variation and len(results) >= 2:
+                # 强制变着：把引擎最优着法移到末尾，优先展示变化着法
+                results = results[1:] + [results[0]]
+            return results
 
     def _timeout_check(self, max_time_ms: int):
         time.sleep(max_time_ms / 1000)

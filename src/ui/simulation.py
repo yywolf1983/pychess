@@ -73,7 +73,6 @@ class SimulationMixin:
         self._clear_hint(keep_lines=True)
         self.chess_info.select = Pos(-1, -1)
         self.chess_info.ret = []
-        self.show_toast('支招演示：▶/◀ 逐步演示，✕ 退出；不影响真实对局')
 
 
     def _sim_apply_move(self, mv):
@@ -154,7 +153,6 @@ class SimulationMixin:
         pygame.draw.line(self.screen, (90, 130, 170), (0, y0), (w, y0), 1)
 
         total = len(self.sim_pv)
-        self._draw_text('支招演示 · 引擎推荐线', w // 2, y0 + 16, 'small', (150, 200, 255))
         self._draw_text_right(f'步骤 {self.sim_index}/{total}', w - 14, y0 + 16,
                               'small', (180, 200, 220))
 
@@ -177,7 +175,7 @@ class SimulationMixin:
         for i in range(first, last):
             yy = list_top + i * row_h - self.sim_scroll
             side = '（红）' if (i % 2 == 0) else '（黑）'
-            txt = f'{i+1}. {pv_cn[i]}{side}'
+            txt = f'{i+1:02d}. {pv_cn[i]}{side}'
             if i == self.sim_index:
                 hl = pygame.Surface((w - 16, row_h - 2), pygame.SRCALPHA)
                 pygame.draw.rect(hl, (60, 110, 160, 220), hl.get_rect(), border_radius=5)

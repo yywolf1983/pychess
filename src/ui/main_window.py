@@ -130,6 +130,10 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self._edit_pickup_cell = None    # 拾起棋子时的原格子（区分移动 / 删除）
         self.edit_history = []           # 摆棋操作撤销栈：每项可还原一次编辑
         self._candidate_last_click = None  # (index, tick) 候选着法双击进入模拟判定
+        # 当前方行棋时间（每走一步重置，实时累计；单位秒）
+        self.turn_start_tick = time.time()
+        self._last_red_go = None            # 上一帧行棋方，用于检测换边重置计时
+        self._turn_elapsed_frozen = 0.0     # 终局/模拟/摆棋时冻结的时间
         # 支招「跟线」跟踪状态：玩家按推荐线行棋时持续提示剩余着法
         self._track_pv = None        # 当前正在跟踪的推荐线（Move 列表）
         self._track_idx = 0          # 下一个待校验的 PV 步索引
