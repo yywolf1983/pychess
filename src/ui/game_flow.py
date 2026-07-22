@@ -72,10 +72,14 @@ class GameFlowMixin:
 
 
     def undo_move(self):
-        # 浏览状态下先退出浏览，再执行悔棋
+        # 浏览状态下悔棋：从「当前步」往回退 undo_count 步，在该局面分叉进入实时对局，
+        # 而非退回到谱的最后一步（之前 browse_index=None 会让棋盘跳到 board_snapshots[-1]）。
         if self.browse_index is not None:
-            self.browse_index = None
-            self.show_toast('已退出局面浏览')
+            k = self.browse_index
+            undo_count = 2 if self.game_mode in ('pvm_red', 'pvm_black') else 1
+            new_k = max(0, k - undo_count)
+            self.browse_index = new_k
+            self._enter_live_from_browse(undo=True)
             return
         # AI 思考中不允许悔棋，避免状态错乱
         if self.is_ai_thinking or self.hint_loading:
@@ -97,12 +101,16 @@ class GameFlowMixin:
         # 棋子被重新填回棋盘。
         self.chess_info.restore_base()
 
-        # 从初始局面精确重放剩余历史（含吃子，象棋无随机性可完整复原）
+        # 从初始局面精确重放剩余历史（含吃子，象棋无随机性可完整复原），
+        # 同时重建 board_snapshots 使其与 move_history 对齐，保证悔棋后
+        # 浏览/评分曲线仍然一致。
+        self.board_snapshots = [[row[:] for row in self.chess_info.piece]]
         for move in replay:
             self.chess_info.piece[move.to_pos.y][move.to_pos.x] = \
                 self.chess_info.piece[move.from_pos.y][move.from_pos.x]
             self.chess_info.piece[move.from_pos.y][move.from_pos.x] = 0
             self.chess_info.is_red_go = not self.chess_info.is_red_go
+            self.board_snapshots.append([row[:] for row in self.chess_info.piece])
         self.chess_info.move_history = replay
 
         # 复位选择/提示/将军等交互状态
@@ -452,6 +460,10 @@ class GameFlowMixin:
             ci.reset()
             ci.piece = [row[:] for row in board]
             ci.is_red_go = start_red
+            # 以加载的起点局面作为本局悔棋基准，避免悔棋退回到标准开局
+            # （「新建的局面」），对排局/残局自定义 FEN 尤为重要。
+            ci.base_piece = [row[:] for row in ci.piece]
+            ci.base_red_go = ci.is_red_go
             ci.move_history = []
             ci.status = 0
             ci.is_checked = False
@@ -482,6 +494,7 @@ class GameFlowMixin:
 
             self.board_snapshots = snapshots
             self.browse_index = 0  # 加载后停在起始局面（第一步）
+            self._pgn_start_red = start_red  # 供「浏览时行棋」分叉判定起始行棋方
 
             # 重放后行棋方应为「下一步轮到谁」，而非起点行棋方
             ci.is_red_go = is_red

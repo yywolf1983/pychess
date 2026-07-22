@@ -28,8 +28,12 @@ class WidgetsMixin:
 
     def _draw_button(self, rect, label, font_size='small', base=(58, 78, 104),
                      hover=(100, 150, 255), active=False, text_color=(235, 240, 248),
-                     icon=None, icon_only=False):
-        hovered = rect.collidepoint(self.mouse_pos)
+                     icon=None, icon_only=False, badge=None):
+        # 顶部「模式」菜单展开时，鼠标落在菜单面板上不应触发其下方按钮的悬停高亮
+        captured = bool(getattr(self, 'mode_menu_open', False)) and \
+            getattr(self, 'mode_menu_panel_rect', None) is not None and \
+            self.mode_menu_panel_rect.collidepoint(self.mouse_pos)
+        hovered = rect.collidepoint(self.mouse_pos) and not captured
         color = hover if (hovered or active) else base
         # 阴影
         shadow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
@@ -44,24 +48,37 @@ class WidgetsMixin:
             self.screen.blit(hi, (rect.x, rect.y))
         label_color = (255, 255, 255) if (hovered or active) else text_color
         if icon:
-            icon_cx = rect.centerx if icon_only else rect.x + 16
-            self._draw_button_glyph(rect, icon, label_color, icon_cx)
             if icon_only:
+                # 仅图标按钮：图标居中偏上，下方附小号文字说明，保证可辨识
+                self._draw_button_glyph(rect, icon, label_color, rect.centerx, rect.centery - 12)
+                cap = self._text_surface(label, 'tiny', label_color)
+                if cap:
+                    self.screen.blit(cap, (rect.centerx - cap.get_width() // 2,
+                                           rect.bottom - cap.get_height() - 8))
                 return
+            icon_cx = rect.x + 16
+            self._draw_button_glyph(rect, icon, label_color, icon_cx)
         surf = self._text_surface(label, font_size, label_color)
         if surf:
             if icon:
                 self.screen.blit(surf, (rect.x + 36, rect.centery - surf.get_height() // 2))
+            elif badge is not None:
+                # 带模式色块按钮：文字靠左、右侧绘制当前模式色块，一眼可辨
+                self.screen.blit(surf, (rect.x + 16, rect.centery - surf.get_height() // 2))
+                chip = pygame.Rect(rect.right - 26, rect.centery - 8, 16, 16)
+                pygame.draw.rect(self.screen, badge, chip, border_radius=4)
+                pygame.draw.rect(self.screen, (255, 255, 255, 90), chip, 1, border_radius=4)
             else:
                 self.screen.blit(surf, (rect.centerx - surf.get_width() // 2,
                                         rect.centery - surf.get_height() // 2))
 
 
-    def _draw_button_glyph(self, rect, kind, color, cx=None):
+    def _draw_button_glyph(self, rect, kind, color, cx=None, cy=None):
         import math
         if cx is None:
             cx = rect.x + 16
-        cy = rect.centery
+        if cy is None:
+            cy = rect.centery
         s = 8
         if kind in ('prev', 'next'):
             d = -1 if kind == 'prev' else 1
@@ -106,6 +123,10 @@ class WidgetsMixin:
                 (ex - ah * tx + ah * 0.5 * px, ey - ah * ty + ah * 0.5 * py),
                 (ex - ah * tx - ah * 0.5 * px, ey - ah * ty - ah * 0.5 * py),
             ])
+        elif kind == 'check':
+            # 勾选标记：表示当前选中的对战模式
+            pygame.draw.line(self.screen, color, (cx - 7, cy), (cx - 1, cy + 7), 3)
+            pygame.draw.line(self.screen, color, (cx - 1, cy + 7), (cx + 8, cy - 7), 3)
         else:
             pygame.draw.circle(self.screen, color, (cx, cy), s, 2)
 

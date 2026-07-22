@@ -150,6 +150,13 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.side_buttons = []   # 侧栏大按钮：摆棋/上一步/下一步/悔棋/支招
         self.mode_menu_open = False
         self.mode_menu_rects = []
+        self.mode_menu_panel_rect = None
+        # 棋谱列表（侧栏）状态
+        self._move_scroll = 0
+        self._move_row_rects = []
+        self._move_strs = []
+        self._move_strs_len = -1
+        self._move_max_scroll = 0
         self._init_buttons()
         
         self.running = True
@@ -168,7 +175,8 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         pad = 10
         gap = 8
         n = len(menu_items)
-        bw = (self.window_width - 2 * pad - (n - 1) * gap) / n
+        # 菜单按钮只占棋盘区域宽度，右侧留给菜单栏的品牌（「中国象棋」），避免覆盖
+        bw = (self.board_width - 2 * pad - (n - 1) * gap) / n
         bh = 38
         by = (self.menu_h - bh) // 2
         for i, (key, label, icon, kind) in enumerate(menu_items):
@@ -181,7 +189,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         # ===== 侧栏大按钮：摆棋 / 上一步 / 下一步 / 悔棋 / 支招 =====
         sx = self.board_width + 20
         sw = self.sidebar_width - 40
-        sy0 = self.menu_h + 72   # 侧栏标题之下
+        sy0 = self.menu_h + 16   # 菜单栏已含品牌，侧栏顶部直接放置按钮
         big_h = 58
         big_gap = 14
         nav_w = (sw - 12) // 2
@@ -201,23 +209,21 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             'rect': pygame.Rect(sx + nav_w + 12, nav_y, nav_w, big_h),
             'key': 'next', 'label': '下一步', 'icon': 'next', 'icon_only': True
         })
-        # 悔棋（整行）
+        # 悔棋 / 翻转棋盘（同一行，仅图标）
         undo_y = nav_y + big_h + big_gap
         self.side_buttons.append({
-            'rect': pygame.Rect(sx, undo_y, sw, big_h),
-            'key': 'undo', 'label': '悔棋', 'icon': 'undo'
+            'rect': pygame.Rect(sx, undo_y, nav_w, big_h),
+            'key': 'undo', 'label': '悔棋', 'icon': 'undo', 'icon_only': True
+        })
+        self.side_buttons.append({
+            'rect': pygame.Rect(sx + nav_w + 12, undo_y, nav_w, big_h),
+            'key': 'flip', 'label': '翻转棋盘', 'icon': 'flip', 'icon_only': True
         })
         # 支招（整行）
         hint_y = undo_y + big_h + big_gap
         self.side_buttons.append({
             'rect': pygame.Rect(sx, hint_y, sw, big_h),
             'key': 'hint', 'label': '支招', 'icon': 'hint'
-        })
-        # 翻转棋盘（整行）：将整个棋盘做 180° 镜像，红/黑上下对调（参照 Android 版旋转按钮）
-        flip_y = hint_y + big_h + big_gap
-        self.side_buttons.append({
-            'rect': pygame.Rect(sx, flip_y, sw, big_h),
-            'key': 'flip', 'label': '翻转棋盘', 'icon': 'flip'
         })
         # 摆棋开关沿用第一个大按钮
         self.edit_button = self.side_buttons[0]['rect']
@@ -290,6 +296,15 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                 if btn['rect'].collidepoint(x, y):
                     self.handle_action(btn['key'])
                     return
+
+            # 棋谱列表：点击某步跳转复盘（非摆棋模式）
+            if not self.editing:
+                for rect, step in getattr(self, '_move_row_rects', []):
+                    if rect.collidepoint(x, y):
+                        self.browse_index = step
+                        self._sync_eval_to_browse()
+                        self.show_toast(f'跳至第 {step} 步')
+                        return
 
             if self.editing:
                 # 先判断是否点中滚动条滑块，若是则进入拖拽
@@ -402,6 +417,12 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                             self.candidate_scroll = max(
                                 0, min(self.candidate_max_scroll,
                                        self.candidate_scroll - event.y * 30))
+                    elif getattr(self, '_move_row_rects', None) and self._move_max_scroll > 0:
+                        # 棋谱列表滚轮滚动（鼠标位于侧栏区域时）
+                        if self.mouse_pos[0] >= self.board_width:
+                            self._move_scroll = max(
+                                0, min(self._move_max_scroll,
+                                       self._move_scroll - event.y * 28))
                 elif event.type == pygame.KEYDOWN:
                     if self.simulating:
                         if event.key in (pygame.K_RIGHT, pygame.K_SPACE):

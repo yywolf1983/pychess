@@ -22,20 +22,37 @@ class SidebarMixin:
         self._gradient_rect(bar, (40, 54, 74), (26, 36, 52))
         pygame.draw.line(self.screen, (64, 82, 108),
                          (0, self.menu_h - 1), (self.window_width, self.menu_h - 1), 1)
-        mode_label = {'pvp': '双人', 'pvm_red': '人机红', 'pvm_black': '人机黑', 'mvm': '双机'}
+        # 模式 -> 文字色块：每种模式一种辨识色，按钮上仅显示「模式」+ 当前色块
+        mode_color = {
+            'pvp': (76, 175, 80),        # 双人对战：绿
+            'pvm_red': (200, 60, 60),    # 玩家执红：红
+            'pvm_black': (70, 70, 84),   # 玩家执黑：深灰
+            'mvm': (90, 150, 235),       # 双机对战：蓝
+        }
         for btn in self.menu_buttons:
             key = btn['key']
             if btn['kind'] == 'mode':
-                label = '模式：' + mode_label.get(self.game_mode, '双人')
+                label = '模式'
                 active = self.mode_menu_open
                 base, hover = (54, 72, 98), (216, 168, 80)
+                badge = mode_color.get(self.game_mode, (76, 175, 80))
             else:
                 label = btn['label']
                 active = False
                 base, hover = (54, 72, 98), (100, 150, 255)
+                badge = None
             self._draw_button(btn['rect'], label, 'small',
                               base=base, hover=hover, active=active,
-                              text_color=(235, 240, 248), icon=btn.get('icon'))
+                              text_color=(235, 240, 248), icon=btn.get('icon'),
+                              badge=badge)
+        # 分组分隔线：在「模式」按钮之前
+        mode_btn = next(b for b in self.menu_buttons if b['key'] == 'mode')
+        pygame.draw.line(self.screen, (64, 82, 108),
+                         (mode_btn['rect'].x - 16, 18), (mode_btn['rect'].x - 16, self.menu_h - 18), 1)
+        # 品牌（右侧）
+        bx = self.board_width + 24
+        by = self.menu_h // 2
+        self._draw_text_left('中国象棋', bx + 4, by, 'large', (245, 212, 132))
 
 
     def _draw_mode_menu(self):
@@ -54,9 +71,11 @@ class SidebarMixin:
         row_h = 46
         pad = 6
         w = 240
-        x = anchor.x
+        x = min(anchor.x, self.window_width - w - 8)
         y = anchor.y + anchor.h + 4
         panel = pygame.Rect(x, y, w, len(items) * row_h + pad * 2)
+        # 记录面板区域，供「模式菜单展开时屏蔽下方按钮悬停高亮」使用
+        self.mode_menu_panel_rect = panel
         # 半透明遮罩（捕获外部点击关闭），仅覆盖侧栏右侧区域
         self._gradient_rect(panel, (40, 54, 74), (28, 38, 54))
         pygame.draw.rect(self.screen, (120, 150, 190), panel, 1, border_radius=8)
@@ -65,15 +84,22 @@ class SidebarMixin:
             ry = y + pad + i * row_h
             r = pygame.Rect(x + pad, ry, w - 2 * pad, row_h - 6)
             sel = mode == self.game_mode
-            bg = (60, 80, 110) if sel else (50, 66, 92)
-            pygame.draw.rect(self.screen, bg, r, border_radius=6)
-            # 左侧主题色条
-            pygame.draw.rect(self.screen, color, pygame.Rect(r.x, r.y, 5, r.h), border_radius=3)
-            # 选中勾
+            hovered = r.collidepoint(self.mouse_pos)
             if sel:
-                self._draw_text('✓', r.x + r.w - 16, r.y + r.h // 2, 'small', color)
+                bg = (72, 108, 152)        # 选中项：明显更亮
+            elif hovered:
+                bg = (58, 76, 106)
+            else:
+                bg = (44, 58, 82)
+            pygame.draw.rect(self.screen, bg, r, border_radius=6)
+            # 左侧主题色条（选中项更长更亮，强化「已选」反馈）
+            pygame.draw.rect(self.screen, color, pygame.Rect(r.x, r.y, 5, r.h), border_radius=3)
             self._draw_text_left(label, r.x + 16, r.y + r.h // 2, 'small',
                                  (235, 240, 248))
+            # 选中勾（用图标绘制，避免依赖系统对 ✓ 字形的支持）
+            if sel:
+                self._draw_button_glyph(r, 'check', (150, 210, 255),
+                                        r.x + r.w - 18, r.y + r.h // 2)
             self.mode_menu_rects.append((r, mode))
 
 
@@ -84,10 +110,6 @@ class SidebarMixin:
         self._gradient_rect(pygame.Rect(sb_x, self.menu_h, self.sidebar_width,
                                         y0 - self.menu_h),
                             (45, 62, 84), (28, 40, 58))
-
-        # 标题（菜单栏下方）
-        self._draw_text('中国象棋', sb_x + self.sidebar_width // 2,
-                        self.menu_h + 30, 'large', (245, 212, 132))
 
         # 摆棋（编辑局面）开关 = 第一个侧栏大按钮
         self._draw_button(self.edit_button,
@@ -102,7 +124,7 @@ class SidebarMixin:
 
         self.hint_ui = []  # 每帧重建支招区可点击条目
 
-        # 侧栏大按钮：上一步 / 下一步 / 悔棋 / 支招
+        # 侧栏大按钮：上一步 / 下一步 / 悔棋 / 支招 / 翻转
         for btn in self.side_buttons[1:]:
             if btn['key'] == 'hint':
                 base, hover = (70, 112, 86), (96, 196, 130)
@@ -116,65 +138,212 @@ class SidebarMixin:
                               text_color=text_color, icon=btn.get('icon'),
                               icon_only=btn.get('icon_only', False))
 
-        # 状态卡片（起始于侧栏按钮区之后，延伸至底部面板之前）
-        status_y0 = self.side_buttons[-1]['rect'].bottom + 16
-        y0 = self.board_offset_y + self.board_height
-        card = pygame.Rect(sb_x + 16, status_y0, self.sidebar_width - 32,
-                            y0 - status_y0 - 16)
-        self._draw_card(card, (248, 250, 252))
+        # 布局：不显示棋谱列表，对局状态卡片占满侧栏主区域（与侧栏底部对齐），
+        # 数据完整显示在框内。
+        sb_top = self.side_buttons[-1]['rect'].bottom + 16
+        avail_bottom = y0 - 14
+        status_h = self._status_card_height()
+        # 空间不足时压缩状态卡，保证至少保留一定高度
+        status_h = max(160, min(status_h, avail_bottom - sb_top))
+        status_card = pygame.Rect(sb_x + 16, sb_top,
+                                  self.sidebar_width - 32, avail_bottom - sb_top)
+        self._draw_card(status_card, (248, 250, 252))
+        self._draw_status_card(status_card)
+
+        # 不显示棋谱列表：清空行点击热区，避免残留的导航点击命中
+        self._move_row_rects = []
+
+    # ------------------------------------------------------------------
+    # 状态卡片（紧凑排版）
+    # ------------------------------------------------------------------
+    def _status_card_height(self):
+        h = 22 + 34 + 38          # 标题 + 回合色块
+        if self.chess_info.is_checked:
+            h += 40
+        if self._result_info():
+            h += 48
+        h += 4 * 28               # 评分 / 步数 / 深度 / AI
+        if self.toast and time.time() <= self.toast_until:
+            h += 56
+        h += 18                   # 底部留白
+        return h
+
+    def _draw_status_card(self, card):
         cx = card.x + 18
         cw = card.width - 36
-        cy = card.y + 24
+        cy = card.y + 22
+        # 标题 + 强调下划线
         self._draw_text('对局状态', cx + cw // 2, cy, 'small', (70, 82, 104))
-        cy += 34
-        # 当前回合（归属方）提示
-        turn_side = '红方' if self.chess_info.is_red_go else '黑方'
-        turn_color = (210, 64, 52) if self.chess_info.is_red_go else (40, 44, 52)
-        self._draw_text_left('当前回合', cx, cy, 'small', (70, 82, 104))
-        self._draw_text_left(turn_side, cx + 72, cy, 'small', turn_color)
-        cy += 28
-        if self.chess_info.is_checked:
-            self._draw_text('将军!', cx + cw // 2, cy, 'large', (222, 64, 32))
-            cy += 34
-        status = self.chess_info.get_game_status()
-        result = self._result_info()
-        if result:
-            text, color, sub = result
-            if status == 'checkmate':
-                text = '将死 ' + text
-            self._draw_text(text, cx + cw // 2, cy, 'large', color)
-            cy += 32
-            if sub:
-                self._draw_text(sub, cx + cw // 2, cy, 'small', (110, 122, 144))
-                cy += 26
-        # 实时评分（文字呈现于对局状态；顶部不再保留浮动评分条）
-        score_text, score_color = self._format_score(self.eval_score)
-        self._draw_text_left(f'评分: {score_text}', cx, cy, 'small', score_color)
-        cy += 26
-        self._draw_text_left(f'步数: {len(self.chess_info.move_history)}', cx, cy, 'small', (90, 102, 124))
-        cy += 26
-        depth = self._current_depth()
-        self._draw_text_left(f'深度: {depth if depth else "-"}', cx, cy, 'small', (90, 102, 124))
-        cy += 26
-        ai_status = 'AI 思考中...' if self.is_ai_thinking else 'AI 就绪'
-        ai_color = (90, 156, 72) if not self.is_ai_thinking else (230, 132, 32)
-        self._draw_text_left(ai_status, cx, cy, 'small', ai_color)
-        cy += 26
+        pygame.draw.rect(self.screen, (96, 156, 236),
+                         pygame.Rect(cx + cw // 2 - 22, cy + 16, 44, 3), border_radius=2)
+        cy += 38
 
-        # 临时提示信息：集中显示在「对局状态」中（不再浮动于棋盘之上）
+        # 当前回合：色块指示
+        is_red = self.chess_info.is_red_go
+        turn_side = '红方' if is_red else '黑方'
+        chip = pygame.Rect(cx, cy, cw, 32)
+        surf = pygame.Surface((chip.width, chip.height), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (244, 208, 202) if is_red else (206, 212, 224),
+                         surf.get_rect(), border_radius=8)
+        self.screen.blit(surf, chip.topleft)
+        pygame.draw.circle(self.screen, (206, 54, 42) if is_red else (40, 44, 52),
+                           (chip.x + 16, chip.centery), 6)
+        self._draw_text_left(f'{turn_side}行棋', chip.x + 30, chip.centery, 'small', (60, 66, 78))
+        cy += 44
+
+        # 将军提示
+        if self.chess_info.is_checked:
+            self._draw_banner(card.x + 14, cy, card.width - 28, 30, (222, 64, 32), '将军！')
+            cy += 40
+
+        # 终局结果
+        res = self._result_info()
+        if res:
+            text, color, sub = res
+            self._draw_banner(card.x + 14, cy, card.width - 28, 38, color, text, sub)
+            cy += 48
+
+        # 信息行（标签左 / 数值右）
+        total_moves = len(self.chess_info.move_history)
+        if self.browse_index is not None:
+            step_info = f'复盘 {self.browse_index}/{len(self.board_snapshots) - 1}'
+        else:
+            step_info = f'{total_moves} 步'
+        score_text, score_color = self._format_score(self.eval_score)
+        depth = self._current_depth()
+        depth_text = f'{depth} 层' if depth else '—'
+        ai_status = 'AI 思考中…' if self.is_ai_thinking else 'AI 就绪'
+        ai_col = (90, 156, 72) if not self.is_ai_thinking else (230, 132, 32)
+        for label, value, vcol in (
+            ('评分', score_text, score_color),
+            ('步数', step_info, (60, 72, 92)),
+            ('深度', depth_text, (60, 72, 92)),
+            ('AI', ai_status, ai_col),
+        ):
+            self._draw_text_left(label, cx, cy + 14, 'small', (110, 122, 142))
+            self._draw_text_right(value, cx + cw, cy + 14, 'small', vcol)
+            cy += 28
+
+        # 临时提示
         if self.toast and time.time() <= self.toast_until:
-            cy += 8
+            cy += 6
             msg = self.toast
             chars_per_line = max(1, cw // 26)
             nlines = max(1, math.ceil(len(msg) / chars_per_line))
-            box_h = nlines * 24 + 16
+            box_h = nlines * 24 + 14
             box = pygame.Rect(cx - 4, cy, cw + 8, box_h)
             surf = pygame.Surface((box.width, box.height), pygame.SRCALPHA)
             surf.fill((36, 50, 70, 245))
             self.screen.blit(surf, (box.x, box.y))
             pygame.draw.rect(self.screen, (120, 150, 190), box, 1, border_radius=6)
-            self._draw_wrapped_text(msg, cx, cy + 10, cw, 24, (225, 235, 248), 'small')
+            self._draw_wrapped_text(msg, cx, cy + 9, cw, 24, (225, 235, 248), 'small')
             cy += box_h + 4
+
+    def _draw_banner(self, x, y, w, h, color, text, sub=None):
+        surf = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(surf, (*color, 46), surf.get_rect(), border_radius=8)
+        self.screen.blit(surf, (x, y))
+        pygame.draw.rect(self.screen, color, pygame.Rect(x, y, w, h), 1, border_radius=8)
+        self._draw_text(text, x + w // 2, y + (h // 2 - 9 if sub else h // 2),
+                        'small', color)
+        if sub:
+            self._draw_text(sub, x + w // 2, y + h // 2 + 9, 'xsmall', (96, 106, 122))
+
+    # ------------------------------------------------------------------
+    # 棋谱列表（填充侧栏剩余空间，可点击跳转复盘 / 滚轮滚动）
+    # ------------------------------------------------------------------
+    def _ensure_move_strs(self):
+        total = len(self.chess_info.move_history)
+        if getattr(self, '_move_strs_len', None) == total and getattr(self, '_move_strs', None) is not None:
+            return
+        self._move_strs_len = total
+        self._move_strs = []
+        self._move_scroll = 0
+        from ..game.notation import move_to_chinese
+        if self.board_snapshots:
+            piece = [row[:] for row in self.board_snapshots[0]]
+        else:
+            piece = [row[:] for row in self.chess_info.piece]
+        for mv in self.chess_info.move_history:
+            pid = piece[mv.from_pos.y][mv.from_pos.x]
+            try:
+                cn = move_to_chinese(pid, mv.from_pos.x, mv.from_pos.y,
+                                     mv.to_pos.x, mv.to_pos.y, piece)
+            except Exception:
+                cn = ''
+            piece[mv.to_pos.y][mv.to_pos.x] = pid
+            piece[mv.from_pos.y][mv.from_pos.x] = 0
+            self._move_strs.append(cn)
+
+    def _draw_move_list(self, card):
+        self._ensure_move_strs()
+        cx = card.x + 16
+        cw = card.width - 32
+        # 标题
+        self._draw_text('棋谱', cx + cw // 2, card.y + 18, 'small', (70, 82, 104))
+        pygame.draw.rect(self.screen, (96, 156, 236),
+                         pygame.Rect(cx + cw // 2 - 18, card.y + 34, 36, 3), border_radius=2)
+        # 列头
+        head_y = card.y + 46
+        self._draw_text_left('回合', cx, head_y + 8, 'xsmall', (150, 160, 178))
+        self._draw_text_left('红方', cx + 44, head_y + 8, 'xsmall', (206, 54, 42))
+        self._draw_text_left('黑方', cx + cw // 2 + 6, head_y + 8, 'xsmall', (60, 70, 90))
+        pygame.draw.line(self.screen, (224, 228, 236),
+                         (cx - 2, head_y + 18), (cx + cw + 2, head_y + 18), 1)
+
+        # 列表区域
+        list_top = card.y + 58
+        list_h = card.height - 58 - 10
+        row_h = 26
+        total = len(self._move_strs)
+        pairs = (total + 1) // 2
+        max_scroll = max(0, pairs * row_h - list_h)
+        self._move_max_scroll = max_scroll
+        self._move_scroll = max(0, min(max_scroll, self._move_scroll))
+
+        clip = pygame.Rect(card.x + 4, list_top, card.width - 8, list_h)
+        self._move_row_rects = []
+        prev_clip = self.screen.get_clip()
+        self.screen.set_clip(clip)
+        for i in range(pairs):
+            ry = list_top + i * row_h - self._move_scroll
+            if ry + row_h <= list_top or ry >= list_top + list_h:
+                continue
+            red_idx = 2 * i
+            black_idx = 2 * i + 1
+            red_str = self._move_strs[red_idx] if red_idx < total else None
+            black_str = self._move_strs[black_idx] if black_idx < total else None
+            # 行号
+            self._draw_text_left(str(i + 1), cx, ry + row_h // 2, 'xsmall', (150, 160, 178))
+            # 红方格
+            if red_str:
+                rrect = pygame.Rect(cx + 40, ry + 2, cw // 2 - 44, row_h - 4)
+                self._draw_move_cell(rrect, red_str, self.browse_index == red_idx + 1, (206, 54, 42))
+                self._move_row_rects.append((rrect, red_idx + 1))
+            # 黑方格
+            if black_str:
+                brect = pygame.Rect(cx + cw // 2 + 4, ry + 2, cw // 2 - 44, row_h - 4)
+                self._draw_move_cell(brect, black_str, self.browse_index == black_idx + 1, (60, 70, 90))
+                self._move_row_rects.append((brect, black_idx + 1))
+        self.screen.set_clip(prev_clip)
+
+        # 滚动条
+        if max_scroll > 0:
+            self._draw_scrollbar(card, list_top, list_h, self._move_scroll, max_scroll)
+
+    def _draw_move_cell(self, rect, text, active, color):
+        if active:
+            surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(surf, (96, 156, 236, 70), surf.get_rect(), border_radius=6)
+            self.screen.blit(surf, rect.topleft)
+        self._draw_text_left(text, rect.x + 8, rect.y + rect.height // 2, 'xsmall', color)
+
+    def _draw_scrollbar(self, card, top, h, scroll, max_scroll):
+        tx = card.right - 8
+        thumb_h = max(24, int(h * (h / (h + max_scroll))))
+        thumb_y = top + int((h - thumb_h) * (scroll / max_scroll)) if max_scroll else top
+        pygame.draw.rect(self.screen, (180, 190, 205),
+                         pygame.Rect(tx, thumb_y, 4, thumb_h), border_radius=2)
 
 
     def draw_settings(self):

@@ -17,7 +17,9 @@ from .chess_view import ChessView
 class BoardInteractionMixin:
     def handle_board_click(self, pos: Pos):
         if self.browse_index is not None:
-            return  # 局面浏览中，棋盘不可落子
+            # 局面浏览中点击棋盘：以当前浏览局面为起点「分叉」进入实时对局，
+            # 后续走法覆盖原谱剩余着法，棋谱列表与评分曲线同步刷新。
+            self._enter_live_from_browse()
         if self.chess_info.get_game_status() != 'playing':
             return
         
@@ -28,11 +30,15 @@ class BoardInteractionMixin:
             return
         
         if self.game_mode == 'pvm_red' and not self.chess_info.is_red_go:
+            # 轮到 AI（电脑）行棋：触发 AI 落子（浏览分叉后也能立即接管）
+            self.check_ai_turn()
             return
         
         if self.game_mode == 'pvm_black' and self.chess_info.is_red_go:
+            self.check_ai_turn()
             return
         
+
         # 点击已选中的同一颗棋子 -> 取消选中，并结束支招
         if self.chess_info.select.x == pos.x and self.chess_info.select.y == pos.y:
             self.chess_info.select = Pos(-1, -1)
@@ -68,6 +74,47 @@ class BoardInteractionMixin:
                 self.chess_info.select_piece(pos.x, pos.y)
         else:
             self.chess_info.select_piece(pos.x, pos.y)
+
+
+    def _enter_live_from_browse(self, undo=False):
+        """从局面浏览切换到实时对局：以当前浏览局面为新起点，截断谱的后续着法。
+
+        用于「读谱时随时行棋」——在浏览某一步时点击棋盘即在当前局面分叉，原谱
+        剩余着法被新走法覆盖；棋谱列表、评分曲线随截断后的快照同步刷新。
+        undo=True 表示由「悔棋」触发，从当前步往回退若干步后在该局面分叉。
+        """
+        k = self.browse_index
+        # board_snapshots[0] 为起始局面，browse_index=k 表示已走 k 步，
+        # 故截断历史/快照到当前步，并把棋盘恢复为当前浏览局面。
+        self.chess_info.move_history = self.chess_info.move_history[:k]
+        self.board_snapshots = self.board_snapshots[:k + 1]
+        self.chess_info.piece = [row[:] for row in self.board_snapshots[k]]
+
+        # 当前应行棋方：起点红先，每走一步轮转一次。
+        start_red = getattr(self, '_pgn_start_red', True)
+        self.chess_info.is_red_go = start_red if (k % 2 == 0) else (not start_red)
+
+        # 退出浏览，并清掉与实时快照不再对齐的分步评分，回退到 eval_history 曲线。
+        self.browse_index = None
+        self.eval_by_step = []
+        self.eval_step_gen += 1
+        self.eval_gen += 1
+        self.eval_score = None
+
+        # 当前局面按实时对局重新判定（清除原谱终局/和棋残留状态），
+        # 并重新计算将军状态，使提示/横幅与真实局面一致。
+        self.chess_info.status = 0
+        self.chess_info.winner = None
+        self.chess_info.draw_reason = ''
+        self.chess_info.select = Pos(-1, -1)
+        self.chess_info.ret = []
+        self._clear_hint()
+        self.chess_info.is_checked = is_king_danger(
+            self.chess_info.piece, self.chess_info.is_red_go)
+
+        # 失效棋谱列表缓存（着法数已变化），下次绘制重建。
+        self._move_strs_len = -1
+        self.show_toast('已悔棋到该局面' if undo else '已从该局面开始行棋')
 
 
     def _clear_hint(self, keep_lines=False):
