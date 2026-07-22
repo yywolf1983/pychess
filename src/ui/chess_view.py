@@ -1,6 +1,7 @@
 import pygame
 import os
 import math
+import time
 from typing import List
 from ..game.board import ChessInfo
 from ..game.pos import Pos
@@ -393,17 +394,35 @@ class ChessView:
             pygame.draw.line(self.screen, color,
                              (from_center_x, from_center_y), (base_x, base_y), width)
         else:
-            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, outline, width + 3)
-            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, color, width)
+            # 对方应招（虚线）随时间相位滚动，产生流动感
+            off = int((time.time() * 60.0)) % 20
+            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, outline, width + 3, off)
+            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, color, width, off)
 
         if radius:
-            # 起点高亮圆圈：半透明，避免遮挡底层棋子
-            r = int(radius + 2)
+            # 起点高亮圆圈：呼吸脉动（半径与透明度随时间起伏），强化“从这里走”
+            p = 0.5 + 0.5 * math.sin(time.time() * 3.0)
+            r = int(radius + 2 + 3 * p)
+            alpha = int(90 + 60 * p)
             dot = pygame.Surface((2 * r, 2 * r), pygame.SRCALPHA)
             dcx = dcy = r
             pygame.draw.circle(dot, (*outline, 130), (dcx, dcy), r)
-            pygame.draw.circle(dot, (*color, 110), (dcx, dcy), radius)
+            pygame.draw.circle(dot, (*color, alpha), (dcx, dcy), radius)
             self.screen.blit(dot, (from_center_x - dcx, from_center_y - dcy))
+
+        # 实线（我方推荐）沿箭头方向流动的光点，直观传达“走向目标”的方向感
+        if solid and dist > head_len + 4:
+            flow = (time.time() * 0.6) % 1.0
+            for k in (0.0, 0.5):
+                frac = (flow + k) % 1.0
+                pxc = from_center_x + (base_x - from_center_x) * frac
+                pyc = from_center_y + (base_y - from_center_y) * frac
+                a = int(170 * (1.0 - abs(frac - 0.5) * 1.6))
+                a = max(0, min(170, a))
+                rr = max(3, int(5 * f))
+                glow = pygame.Surface((2 * rr + 6, 2 * rr + 6), pygame.SRCALPHA)
+                pygame.draw.circle(glow, (*color, a), (rr + 3, rr + 3), rr)
+                self.screen.blit(glow, (int(pxc - rr - 3), int(pyc - rr - 3)))
 
         self._draw_arrow(from_center_x, from_center_y, to_center_x, to_center_y, color, outline)
 
@@ -433,25 +452,30 @@ class ChessView:
         ])
         pygame.draw.polygon(self.screen, color, [p1, p2, p3])
 
-    def _draw_dashed_line(self, from_x, from_y, to_x, to_y, color, width=6):
+    def _draw_dashed_line(self, from_x, from_y, to_x, to_y, color, width=6, offset=0):
         dx = to_x - from_x
         dy = to_y - from_y
         length = math.hypot(dx, dy)
+        if length < 1:
+            return
         dash_length = 12
         gap_length = 8
-
-        num_dashes = int(length / (dash_length + gap_length))
-
-        for i in range(num_dashes):
-            start_ratio = i * (dash_length + gap_length) / length
-            end_ratio = (i * (dash_length + gap_length) + dash_length) / length
-
-            line_start_x = from_x + dx * start_ratio
-            line_start_y = from_y + dy * start_ratio
-            line_end_x = from_x + dx * end_ratio
-            line_end_y = from_y + dy * end_ratio
-
-            pygame.draw.line(self.screen, color, (line_start_x, line_start_y), (line_end_x, line_end_y), width)
+        period = dash_length + gap_length
+        if period < 1:
+            return
+        ux, uy = dx / length, dy / length
+        start = - (offset % period)
+        pos = start
+        while pos < length:
+            s = max(0, pos)
+            e = min(length, pos + dash_length)
+            if e > s:
+                line_start_x = from_x + ux * s
+                line_start_y = from_y + uy * s
+                line_end_x = from_x + ux * e
+                line_end_y = from_y + uy * e
+                pygame.draw.line(self.screen, color, (line_start_x, line_start_y), (line_end_x, line_end_y), width)
+            pos += period
     
     def _draw_thinking(self):
         pass

@@ -132,10 +132,11 @@ class SidebarMixin:
                     # AI 思考中也复用此按钮：动画 + “立即落子”中断
                     base, hover = (120, 96, 40), (170, 132, 50)
                     text_color = (255, 246, 230)
-                    label = 'AI 思考中…'
+                    label = '思考中…'
                     icon = None
                     active = True
                     spinner = True
+                    pulse = True
                 elif self.hint_loading:
                     base, hover = (70, 112, 86), (96, 196, 130)
                     text_color = (235, 248, 240)
@@ -143,6 +144,7 @@ class SidebarMixin:
                     icon = btn.get('icon')
                     active = True
                     spinner = True
+                    pulse = True
                 else:
                     base, hover = (70, 112, 86), (96, 196, 130)
                     text_color = (235, 248, 240)
@@ -150,6 +152,7 @@ class SidebarMixin:
                     icon = btn.get('icon')
                     active = False
                     spinner = False
+                    pulse = False
             else:
                 base, hover = (58, 78, 104), (100, 150, 255)
                 text_color = (235, 240, 248)
@@ -157,11 +160,12 @@ class SidebarMixin:
                 icon = btn.get('icon')
                 active = False
                 spinner = False
+                pulse = False
             self._draw_button(btn['rect'], label, 'large',
                               base=base, hover=hover, active=active,
                               text_color=text_color, icon=icon,
                               icon_only=btn.get('icon_only', False),
-                              spinner=spinner)
+                              spinner=spinner, pulse=pulse)
 
         # 布局：不显示棋谱列表，对局状态卡片占满侧栏主区域（与侧栏底部对齐），
         # 数据完整显示在框内。
@@ -408,7 +412,8 @@ class SidebarMixin:
         card_x = (self.window_width - 560) // 2
         card_y = 24
         card_w = 560
-        card_h = self.window_height - 48
+        # 内容高度随说明文字增加，低于该值时撑高卡片避免溢出
+        card_h = max(self.window_height - 48, 704)
         self._draw_card(pygame.Rect(card_x, card_y, card_w, card_h), (255, 255, 255))
 
         content_x = card_x + 40
@@ -429,17 +434,20 @@ class SidebarMixin:
         self._draw_toggle(effect_check_rect, self.settings.is_effect_play)
 
         # AI 设置（参数对齐 Android 版）
-        self._draw_section(content_x, card_y + 234, 'AI 设置')
+        self._draw_section(content_x, card_y + 232, 'AI 设置')
 
-        # 数值参数：减号(左) / 滑条 / 加号(右) 三部分，滑条用于在加减之间连续调整
+        # 数值参数：减号(左) / 滑条 / 加号(右)；每项下方附一行灰色说明
         self.settings_sliders = []
-        minus_w, plus_w = 36, 36
-        slider_w = 150
+        minus_w, plus_w = 34, 34
+        slider_w = 156
         gap = 10
         col_r = card_x + card_w - 40
 
-        def draw_row(y, label, value, vmin, vmax, attr, key):
+        def draw_row(y, label, value, vmin, vmax, attr, key, hint='',
+                     hint_color=(150, 162, 180)):
             self._draw_text_left(f'{label}: {value}', content_x, y, 'small', (60, 72, 92))
+            if hint:
+                self._draw_text_left(hint, content_x, y + 19, 'tiny', hint_color)
             # 固定布局：减号在左、滑条居中、加号在右 → [−][滑条][+]
             plus_rect = pygame.Rect(col_r - plus_w, y - 18, plus_w, 36)
             track = pygame.Rect(plus_rect.x - gap - slider_w, y - 9, slider_w, 6)
@@ -451,24 +459,35 @@ class SidebarMixin:
                                           'vmin': vmin, 'vmax': vmax, 'attr': attr})
             return minus_rect, plus_rect
 
-        depth_minus_rect, depth_plus_rect = draw_row(card_y + 290, '搜索深度 (层)',
-                                                     self.settings.depth, 5, 120, 'depth', 'depth')
-        skill_minus_rect, skill_plus_rect = draw_row(card_y + 340, '技能级别 (级)',
-                                                     self.settings.skill_level, 1, 20, 'skill_level', 'skill')
-        time_minus_rect, time_plus_rect = draw_row(card_y + 390, '思考时间 (秒)',
-                                                   self.settings.thinking_time, 1, 60, 'thinking_time', 'time')
-        multi_minus_rect, multi_plus_rect = draw_row(card_y + 440, 'MultiPV (变)',
-                                                     self.settings.multi_pv, 1, 12, 'multi_pv', 'multi')
+        row_top = card_y + 272
+        row_step = 70
+        depth_minus_rect, depth_plus_rect = draw_row(
+            row_top, '搜索深度 (层)', self.settings.depth, 5, 120, 'depth', 'depth',
+            '每步向前推演的层数上限（越大越慢、越准）')
+        skill_minus_rect, skill_plus_rect = draw_row(
+            row_top + row_step, '技能级别 (级)', self.settings.skill_level, 1, 20,
+            'skill_level', 'skill',
+            '注意：当前引擎不支持此选项，该设置暂不起作用', (206, 120, 64))
+        time_minus_rect, time_plus_rect = draw_row(
+            row_top + 2 * row_step, '思考时间 (秒)', self.settings.thinking_time, 1, 60,
+            'thinking_time', 'time', '每步思考的最长时间，到达即停（先到先停）')
+        multi_minus_rect, multi_plus_rect = draw_row(
+            row_top + 3 * row_step, 'MultiPV (变)', self.settings.multi_pv, 1, 12,
+            'multi_pv', 'multi', '返回候选着法数，用于支招列表展示')
 
         # 强制变着（对齐 Android）
-        force_check_rect = pygame.Rect(card_x + card_w - 90, card_y + 462, 42, 42)
-        self._draw_text_left('强制变着', content_x, card_y + 484, 'small', (60, 72, 92))
+        force_y = row_top + 4 * row_step
+        force_check_rect = pygame.Rect(card_x + card_w - 90, force_y - 12, 42, 42)
+        self._draw_text_left('强制变着', content_x, force_y + 10, 'small', (60, 72, 92))
+        self._draw_text_left('开启后尽量偏离常规最优着法，增加对局变化',
+                             content_x, force_y + 29, 'tiny', (150, 162, 180))
         self._draw_toggle(force_check_rect, self.settings.force_variation)
 
-        save_rect = pygame.Rect(content_x, card_y + 540, 230, 52)
+        save_y = force_y + 76
+        save_rect = pygame.Rect(content_x, save_y, 230, 52)
         self._draw_button(save_rect, '保存设置', 'large',
                           base=(92, 184, 120), hover=(70, 160, 100), text_color=(255, 255, 255))
-        cancel_rect = pygame.Rect(card_x + card_w - 40 - 230, card_y + 540, 230, 52)
+        cancel_rect = pygame.Rect(card_x + card_w - 40 - 230, save_y, 230, 52)
         self._draw_button(cancel_rect, '取消', 'large',
                           base=(206, 108, 108), hover=(188, 86, 86), text_color=(255, 255, 255))
 

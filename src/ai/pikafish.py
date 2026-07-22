@@ -361,11 +361,14 @@ class PikafishAI:
             self._send_command(f'setoption name MultiPV value {multi_pv}')
 
             if force_variation:
-                depth += 3
                 # MultiPV 至少 2 路，才能取出与最优着法不同的变着（尊重设置里的 multi_pv）
                 self._send_command(f'setoption name MultiPV value {max(multi_pv, 2)}')
 
-            self._send_command(f'go depth {depth} movetime {time_ms}')
+            # 以“思考时间”为主控：深度按用户设置上限（depth）作为兜底，movetime 控制实际思考时长；
+            # 当设置深度较高（如 120）时时间先到，引擎会思考满设定时长。
+            go_cmd = f'go depth {depth} movetime {time_ms}'
+            print(f'[GO] {go_cmd}')
+            self._send_command(go_cmd)
 
             best_move = None
             score = 0
@@ -511,11 +514,13 @@ class PikafishAI:
             self._send_command(f'setoption name Contempt value {contempt}')
             multipv_value = top_n
             if force_variation:
-                # 强制变着：加深搜索（同 _search_once）并至少开 2 路以取得变化着法
-                depth += 3
+                # 强制变着：至少开 2 路以取得变化着法
                 multipv_value = max(top_n, 2)
             self._send_command(f'setoption name MultiPV value {multipv_value}')
-            self._send_command(f'go depth {depth} movetime {time_ms}')
+            # 以“思考时间”为主控：深度按用户设置上限（depth）作为兜底，movetime 控制实际思考时长
+            go_cmd = f'go depth {depth} movetime {time_ms}'
+            print(f'[GO] {go_cmd}')
+            self._send_command(go_cmd)
 
             candidates = {}  # multipv -> (move_uci, score)
             max_search_time = time_ms + 5000
@@ -545,7 +550,14 @@ class PikafishAI:
                         sc = None
                         pv_list = None
                         for i in range(len(parts)):
-                            if parts[i] == 'score' and i + 2 < len(parts):
+                            if parts[i] == 'depth' and i + 1 < len(parts):
+                                try:
+                                    nd = int(parts[i + 1])
+                                    if nd > self.current_depth:
+                                        self.current_depth = nd
+                                except Exception:
+                                    pass
+                            elif parts[i] == 'score' and i + 2 < len(parts):
                                 if parts[i + 1] == 'cp':
                                     try:
                                         sc = int(parts[i + 2])

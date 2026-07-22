@@ -113,6 +113,7 @@ class HintEvalMixin:
             settings.multi_pv = hint_count
             results = self.ai.get_top_moves(self.chess_info, settings, top_n=hint_count)
             self.hint_depth = self.ai.current_depth  # 记录支招实际搜索深度
+            self.last_depth = self.ai.current_depth    # 记录支招达到的最大搜索深度
             self.hint_queue.put((gen, results))
         except Exception as e:
             print('支招失败:', e)
@@ -482,6 +483,10 @@ class HintEvalMixin:
         """
         if self.is_ai_thinking or self.hint_loading:
             return self.ai.current_depth
+        # 最近一次搜索（AI 行棋 / 支招）达到的最大深度，结束后仍保留展示
+        last = getattr(self, 'last_depth', 0)
+        if last:
+            return last
         if getattr(self, 'ai_lines', None):
             return self.hint_depth
         return self.eval_depth

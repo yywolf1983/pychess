@@ -29,7 +29,7 @@ class WidgetsMixin:
 
     def _draw_button(self, rect, label, font_size='small', base=(58, 78, 104),
                      hover=(100, 150, 255), active=False, text_color=(235, 240, 248),
-                     icon=None, icon_only=False, badge=None, spinner=False):
+                     icon=None, icon_only=False, badge=None, spinner=False, pulse=False):
         # 顶部「模式」菜单展开时，鼠标落在菜单面板上不应触发其下方按钮的悬停高亮
         captured = bool(getattr(self, 'mode_menu_open', False)) and \
             getattr(self, 'mode_menu_panel_rect', None) is not None and \
@@ -47,6 +47,17 @@ class WidgetsMixin:
             hi = pygame.Surface((rect.width, rect.height // 2), pygame.SRCALPHA)
             pygame.draw.rect(hi, (255, 255, 255, 45), hi.get_rect(), border_radius=12)
             self.screen.blit(hi, (rect.x, rect.y))
+        # 脉冲呼吸光晕：支招中 / AI 思考中作为动态指示，让按钮“活着”地呼吸
+        if pulse:
+            p = 0.5 + 0.5 * math.sin(time.time() * 4.0)
+            if getattr(self, 'hint_loading', False):
+                glow_col = (255, 205, 110)        # 支招中：暖金
+            else:
+                glow_col = (120, 190, 255)        # AI 思考中：蓝
+            soft = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+            pygame.draw.rect(soft, (*glow_col, int(20 + 28 * p)), soft.get_rect(), border_radius=12)
+            self.screen.blit(soft, (rect.x, rect.y))
+            pygame.draw.rect(self.screen, (*glow_col, int(70 + 90 * p)), rect, width=2, border_radius=12)
         label_color = (255, 255, 255) if (hovered or active) else text_color
         if icon:
             if icon_only:

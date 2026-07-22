@@ -132,6 +132,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self._candidate_last_click = None  # (index, tick) 候选着法双击进入模拟判定
         self.hint_gen = 0                  # 支招请求代号：用于中断时丢弃过期结果
         self.hint_depth = 0                # 最近一次支招使用的搜索深度（展示在对局状态·深度）
+        self.last_depth = 0                 # 最近一次搜索（AI 行棋 / 支招）达到的最大深度，展示为状态卡“最大深度”
         # 当前方行棋时间（每走一步重置，实时累计；单位秒）
         self.turn_start_tick = time.time()
         self._last_red_go = None            # 上一帧行棋方，用于检测换边重置计时

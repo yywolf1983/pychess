@@ -605,6 +605,10 @@ class GameFlowMixin:
         try:
             print(f"ai_move called. is_red_go={self.chess_info.is_red_go}, game_mode={self.game_mode}, player_color={self.player_color}")
 
+            # 取消可能正在进行的后台评估（使 eval 线程丢弃其结果），确保 AI 行棋使用
+            # 自身独立的搜索结果，绝不复用评估算出的着法；引擎由 self.lock 串行保护，不会交错。
+            self.eval_gen += 1
+
             move = self.ai.get_best_move(self.chess_info, self.settings)
             print(f"AI returned move: from ({move.from_pos.x},{move.from_pos.y}) to ({move.to_pos.x},{move.to_pos.y}), valid={move.is_valid()}")
 
@@ -639,6 +643,8 @@ class GameFlowMixin:
 
 
     def handle_ai_move(self, move: Move):
+        # 记录本次 AI 行棋达到的最大搜索深度，供状态卡“最大深度”展示
+        self.last_depth = self.ai.current_depth
         # 支招跟线中：AI 应招与推荐一致则推进提示线，否则取消提示线；
         # 未跟线时按原逻辑清除上一步提示
         if getattr(self.chess_info, 'suggest_track', False) and self._track_pv is not None:
