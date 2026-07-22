@@ -35,6 +35,7 @@ desktop.ini
 *.tmp
 chess_save.txt
 engine/chess_save.txt
+config/settings.json
 
 # ---------- 说明 ----------
 # 引擎二进制（engine/ 下的 *.exe 以及 pikafish.nnue）为运行必需文件，
