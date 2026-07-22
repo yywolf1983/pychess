@@ -39,7 +39,7 @@ class HintEvalMixin:
         elif action == 'hint':
             if self.editing:
                 return  # 摆棋中无需支招
-            self.show_hint()
+            self.on_hint_button()
         elif action == 'save':
             self.save_game()
         elif action == 'load':
@@ -51,11 +51,31 @@ class HintEvalMixin:
             self.chess_view.toggle_flip()
 
 
+    def on_hint_button(self):
+        """支招按钮：思考中再次点击即「中断」；AI 思考中也复用此按钮中断（立即落子）。"""
+        if self.is_ai_thinking:
+            # 中断 AI 思考：让引擎立即落当前最佳着法（避免无限等待深度搜索）
+            self.ai.should_stop = True
+            return
+        if self.hint_loading:
+            self.interrupt_hint()
+            return
+        self.show_hint()
+
+
+    def interrupt_hint(self):
+        """中断正在进行的支招计算：作废当前请求并停止引擎搜索。"""
+        self.hint_gen += 1
+        self.ai.should_stop = True
+        self.hint_loading = False
+        self._clear_hint()
+
+
     def show_hint(self):
         """向引擎请求当前行棋方的最佳着法，并在棋盘上以箭头提示。"""
         if self.chess_info.get_game_status() != 'playing':
             return
-        if self.is_ai_thinking or self.hint_loading:
+        if self.is_ai_thinking:
             return
         # 仅当轮到人类时给出提示
         if self.game_mode == 'mvm':
@@ -68,6 +88,7 @@ class HintEvalMixin:
         if not self.ai.is_initialized():
             self.ai.initialize()
 
+        self.hint_gen += 1
         self.hint_loading = True
         self._clear_hint()
         t = threading.Thread(target=self._compute_hint)
@@ -76,6 +97,7 @@ class HintEvalMixin:
 
 
     def _compute_hint(self):
+        gen = self.hint_gen
         try:
             settings = Setting()
             # 支招严格遵循设置中的各项参数（深度/思考时间/多路候选/棋力/contempt/变着）
@@ -84,21 +106,32 @@ class HintEvalMixin:
             settings.thinking_time = self.settings.thinking_time
             settings.contempt = self.settings.contempt
             settings.force_variation = self.settings.force_variation
-            # 多路候选数依设置；引擎不支持多路时退化为单路
-            multi_pv = self.settings.multi_pv if self.ai.engine_supports_multi_pv else 1
-            settings.multi_pv = multi_pv
-            results = self.ai.get_top_moves(self.chess_info, settings, top_n=multi_pv)
-            self.hint_queue.put(results)
+            # 多路候选数：支招应给出足够多的条目。
+            # 取设置中的 multi_pv 与充裕默认值的较大者（仍尊重用户设置里更大的值）；
+            # 引擎不支持多路时退化为单路。
+            hint_count = max(self.settings.multi_pv, 12) if self.ai.engine_supports_multi_pv else 1
+            settings.multi_pv = hint_count
+            results = self.ai.get_top_moves(self.chess_info, settings, top_n=hint_count)
+            self.hint_depth = self.ai.current_depth  # 记录支招实际搜索深度
+            self.hint_queue.put((gen, results))
         except Exception as e:
             print('支招失败:', e)
-            self.hint_queue.put(None)
+            self.hint_queue.put((gen, None))
 
 
     def _consume_hint_result(self):
         """消费支招队列结果，生成多路候选着法提示与多步支招窗口。"""
         try:
-            hint_result = self.hint_queue.get_nowait()
+            item = self.hint_queue.get_nowait()
         except queue.Empty:
+            return
+        # 兼容旧队列格式；新格式为 (gen, results) 元组
+        if isinstance(item, tuple) and len(item) == 2 and not isinstance(item[0], list):
+            gen, hint_result = item
+        else:
+            gen, hint_result = self.hint_gen, item
+        # 已中断或已发起新一次支招：丢弃过期结果
+        if gen != self.hint_gen:
             return
         # 模拟行棋期间忽略支招结果（避免污染棋盘上的推荐线条），退出后会重新评估
         if self.simulating:
@@ -165,10 +198,16 @@ class HintEvalMixin:
                 ai_lines.append({'score': score_text, 'my': my_cn, 'opp': opp_cn,
                                 'my_is_red': pid_my >= 8, 'pv_cn': pv_cn,
                                 'pv_moves': pv_moves})
-            # 过滤：PV 不足 5 步的候选不展示（四个列表并行过滤，保持索引一致）
-            keep = [i for i, ln in enumerate(ai_lines) if len(ln.get('pv_cn') or []) >= 5]
+            # 过滤：最优着法（红方视角评分最高的一路）无条件保留；
+            # 其余变着若 PV 步数不足（引擎未充分计算的弱候选）则不展示，避免无意义短线。
+            # 阈值 MIN_HINT_PV_STEPS 可调整（按需求取 2/5 等）。
+            MIN_HINT_PV_STEPS = 5
+            best_idx = max(range(len(scores_num)), key=lambda i: scores_num[i]) if scores_num else -1
+            keep = [i for i, ln in enumerate(ai_lines)
+                    if i == best_idx or len(ln.get('pv_cn') or []) >= MIN_HINT_PV_STEPS]
             if not keep:
-                keep = list(range(len(ai_lines)))  # 兜底：避免全部被过滤导致空白
+                # 兜底：极端情况下所有候选都过短，至少保留最优着法
+                keep = [best_idx] if best_idx >= 0 else list(range(len(ai_lines)))
             moves = [moves[i] for i in keep]
             replies = [replies[i] for i in keep]
             labels = [labels[i] for i in keep]
@@ -436,9 +475,15 @@ class HintEvalMixin:
 
 
     def _current_depth(self):
-        """当前展示的搜索深度：AI 思考时取实时深度，否则取最近一次评估深度。"""
-        if self.is_ai_thinking:
+        """当前展示的搜索深度：
+        - AI 思考中 / 支招计算中：实时深度；
+        - 支招结果已存在：最近一次支招深度（支招深度也在对局状态·深度中展示）；
+        - 其余：最近一次实时评估深度。
+        """
+        if self.is_ai_thinking or self.hint_loading:
             return self.ai.current_depth
+        if getattr(self, 'ai_lines', None):
+            return self.hint_depth
         return self.eval_depth
 
 

@@ -29,7 +29,7 @@ class WidgetsMixin:
 
     def _draw_button(self, rect, label, font_size='small', base=(58, 78, 104),
                      hover=(100, 150, 255), active=False, text_color=(235, 240, 248),
-                     icon=None, icon_only=False, badge=None):
+                     icon=None, icon_only=False, badge=None, spinner=False):
         # 顶部「模式」菜单展开时，鼠标落在菜单面板上不应触发其下方按钮的悬停高亮
         captured = bool(getattr(self, 'mode_menu_open', False)) and \
             getattr(self, 'mode_menu_panel_rect', None) is not None and \
@@ -72,6 +72,10 @@ class WidgetsMixin:
             else:
                 self.screen.blit(surf, (rect.centerx - surf.get_width() // 2,
                                         rect.centery - surf.get_height() // 2))
+        if spinner:
+            # 旋转加载环：约 300° 弧随时间旋转，表示正在思考
+            phase = time.time() * 6.0
+            self._draw_spinner(rect.right - 22, rect.centery, 9, label_color, phase)
 
 
     def _draw_button_glyph(self, rect, kind, color, cx=None, cy=None):
@@ -163,6 +167,14 @@ class WidgetsMixin:
             r = r_out if i % 2 == 0 else r_in
             pts.append((cx + r * math.cos(ang), cy + r * math.sin(ang)))
         pygame.draw.polygon(self.screen, color, pts)
+
+
+    def _draw_spinner(self, cx, cy, r, color, phase):
+        """绘制旋转加载环（约 300° 弧，phase 随时间推进形成旋转动画）。"""
+        start = phase
+        end = phase + math.radians(300)
+        pygame.draw.arc(self.screen, color,
+                        (cx - r, cy - r, 2 * r, 2 * r), start, end, 3)
 
 
     def _draw_card(self, rect, fill=(255, 255, 255)):

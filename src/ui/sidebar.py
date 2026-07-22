@@ -127,16 +127,41 @@ class SidebarMixin:
         # 侧栏大按钮：上一步 / 下一步 / 悔棋 / 支招 / 翻转
         for btn in self.side_buttons[1:]:
             if btn['key'] == 'hint':
-                base, hover = (70, 112, 86), (96, 196, 130)
-                text_color = (235, 248, 240)
+                # 支招按钮：思考中显示旋转动画；点击可再次点击中断
+                if self.is_ai_thinking:
+                    # AI 思考中也复用此按钮：动画 + “立即落子”中断
+                    base, hover = (120, 96, 40), (170, 132, 50)
+                    text_color = (255, 246, 230)
+                    label = 'AI 思考中…'
+                    icon = None
+                    active = True
+                    spinner = True
+                elif self.hint_loading:
+                    base, hover = (70, 112, 86), (96, 196, 130)
+                    text_color = (235, 248, 240)
+                    label = '支招中…(点击中断)'
+                    icon = btn.get('icon')
+                    active = True
+                    spinner = True
+                else:
+                    base, hover = (70, 112, 86), (96, 196, 130)
+                    text_color = (235, 248, 240)
+                    label = btn['label']
+                    icon = btn.get('icon')
+                    active = False
+                    spinner = False
             else:
                 base, hover = (58, 78, 104), (100, 150, 255)
                 text_color = (235, 240, 248)
-            active = (btn['key'] == 'hint' and self.hint_loading)
-            self._draw_button(btn['rect'], btn['label'], 'large',
+                label = btn['label']
+                icon = btn.get('icon')
+                active = False
+                spinner = False
+            self._draw_button(btn['rect'], label, 'large',
                               base=base, hover=hover, active=active,
-                              text_color=text_color, icon=btn.get('icon'),
-                              icon_only=btn.get('icon_only', False))
+                              text_color=text_color, icon=icon,
+                              icon_only=btn.get('icon_only', False),
+                              spinner=spinner)
 
         # 布局：不显示棋谱列表，对局状态卡片占满侧栏主区域（与侧栏底部对齐），
         # 数据完整显示在框内。
@@ -172,7 +197,7 @@ class SidebarMixin:
             h += 40
         if self._result_info():
             h += 48
-        h += 5 * 28               # 评分 / 步数 / 深度 / AI / 行棋时间
+        h += 6 * 28               # 评分 / 步数 / 深度 / AI / 线程 / 行棋时间
         if self.toast and time.time() <= self.toast_until:
             h += 56
         h += 18                   # 底部留白
@@ -238,13 +263,17 @@ class SidebarMixin:
             elapsed = now - self.turn_start_tick
             self._turn_elapsed_frozen = elapsed
         turn_time_text = self._format_clock(elapsed)
+        # 行棋时间颜色跟随当前走子方：红方→红，黑方→近黑（深灰，保证可读）
+        turn_color = (214, 69, 59) if self.chess_info.is_red_go else (45, 52, 64)
 
+        threads_text = f'{self.ai.threads}' if self.ai.threads else '—'
         for label, value, vcol in (
             ('评分', score_text, score_color),
             ('步数', step_info, (60, 72, 92)),
             ('深度', depth_text, (60, 72, 92)),
             ('AI', ai_status, ai_col),
-            (f'时间', turn_time_text, (60, 72, 92)),
+            ('线程', threads_text, (60, 72, 92)),
+            (f'时间', turn_time_text, turn_color),
         ):
             self._draw_text_left(label, cx, cy + 14, 'small', (110, 122, 142))
             self._draw_text_right(value, cx + cw, cy + 14, 'small', vcol)

@@ -4,7 +4,7 @@ import sys
 import threading
 import time
 from typing import Optional, List
-from ..game.board import ChessInfo
+from ..game.board import ChessInfo, Setting
 from ..game.move import Move
 from ..game.pos import Pos
 from ..game.rule import (
@@ -42,6 +42,7 @@ class PikafishAI:
         self.is_searching = False
         self.should_stop = False
         self.current_depth = 0
+        self.threads = 0  # 当前引擎实际使用的线程数（按 CPU 核心自动分配）
         self.last_info_score = None  # 引擎实时分数（行棋方视角，供 UI 实时更新曲线）
         self.engine_supports_multi_pv = True  # pikafish 引擎支持 MultiPV（多路提示）
         self.lock = threading.Lock()
@@ -100,6 +101,15 @@ class PikafishAI:
 
         return None
 
+    def _default_threads(self) -> int:
+        """根据 CPU 核心数分配引擎线程数：预留部分算力给操作系统与界面线程，
+        避免引擎占满所有核心导致界面卡顿。核心越多预留比例越小。"""
+        cpu = os.cpu_count() or 1
+        if cpu <= 2:
+            return 1
+        reserve = 2 if cpu <= 8 else max(2, cpu // 8)
+        return max(1, cpu - reserve)
+
     def _probe_engine(self, engine_path: str) -> bool:
         """探测引擎是否真正可用：不仅握手 uci，还要实际跑一次搜索(go)。
         有些变体(如 avxvnni)能通过 uci 握手，但开始搜索时会崩溃，
@@ -149,8 +159,8 @@ class PikafishAI:
                 # 统一为正斜杠，跨平台兼容 UCI 协议中的路径
                 ep = os.path.abspath(nnue_path).replace('\\', '/')
                 send(f'setoption name EvalFile value {ep}')
-            send('setoption name Threads value 1')
-            send('setoption name Hash value 64')
+                send(f'setoption name Threads value {self._default_threads()}')
+                send('setoption name Hash value 64')
             send('isready')
             start = time.time()
             while time.time() - start <= 8:
@@ -231,11 +241,13 @@ class PikafishAI:
                 if os.path.exists(nnue_path):
                     nnue_path = os.path.abspath(nnue_path).replace('\\', '/')
                     self._send_command(f'setoption name EvalFile value {nnue_path}')
-                self._send_command('setoption name Threads value 1')
+                # 引擎资源类参数（线程/哈希内存）；不属于设置里的 AI 强度参数，
+                # 真正的棋力/Contempt/MultiPV 等每次搜索前会按设置重新下发。
+                # 线程数按 CPU 核心数自动分配，预留部分算力给系统与界面。
+                threads = self._default_threads()
+                self.threads = threads
+                self._send_command(f'setoption name Threads value {threads}')
                 self._send_command('setoption name Hash value 128')
-                self._send_command('setoption name Skill Level value 20')
-                self._send_command('setoption name Contempt value 20')
-                self._send_command('setoption name MultiPV value 1')
                 self._send_command('isready')
                 
                 ready_ok_received = False
@@ -265,6 +277,14 @@ class PikafishAI:
                 return self.reader.readline().strip()
             except Exception:
                 return None
+
+    def _stop_and_drain(self):
+        """中断搜索：让引擎停止并排空其因 stop 产生的残留 bestmove 行，避免污染下次搜索。"""
+        self._send_command('stop')
+        for _ in range(40):
+            line = self._read_line()
+            if not line or line.startswith('bestmove'):
+                break
         return None
     
     def get_best_move(self, chess_info: ChessInfo, settings=None) -> Move:
@@ -327,12 +347,14 @@ class PikafishAI:
                 multi_pv = chess_info.setting.multi_pv
                 force_variation = chess_info.setting.force_variation
             else:
-                depth = 15
-                time_ms = 10000
-                skill_level = 20
-                contempt = 20
-                multi_pv = 1
-                force_variation = False
+                # 兜底：无任何设置对象时，从 Setting 默认值取（与设置文件同源，避免硬编码）
+                d = Setting()
+                depth = d.depth
+                time_ms = d.thinking_time * 1000
+                skill_level = d.skill_level
+                contempt = d.contempt
+                multi_pv = d.multi_pv
+                force_variation = d.force_variation
 
             self._send_command(f'setoption name Skill Level value {skill_level}')
             self._send_command(f'setoption name Contempt value {contempt}')
@@ -340,7 +362,8 @@ class PikafishAI:
 
             if force_variation:
                 depth += 3
-                self._send_command('setoption name MultiPV value 3')
+                # MultiPV 至少 2 路，才能取出与最优着法不同的变着（尊重设置里的 multi_pv）
+                self._send_command(f'setoption name MultiPV value {max(multi_pv, 2)}')
 
             self._send_command(f'go depth {depth} movetime {time_ms}')
 
@@ -427,6 +450,11 @@ class PikafishAI:
                 print(f"读取AI响应失败: {e}")
 
             finally:
+                if self.should_stop:
+                    try:
+                        self._stop_and_drain()
+                    except Exception:
+                        pass
                 self.is_searching = False
                 if engine_died:
                     self.initialized = False
@@ -451,7 +479,7 @@ class PikafishAI:
             self.initialize()
             if not self.initialized:
                 return []
-        top_n = max(1, min(top_n, 12))
+        top_n = max(1, min(top_n, 20))
         with self.lock:
             self.should_stop = True
             if self.is_searching:
@@ -466,24 +494,26 @@ class PikafishAI:
 
             if settings:
                 depth = settings.depth
-                time_ms = min(settings.thinking_time * 1000, 60000)
+                time_ms = settings.thinking_time * 1000
                 skill_level = settings.skill_level
                 contempt = settings.contempt
                 force_variation = settings.force_variation
             else:
-                depth = 15
-                time_ms = 2000
-                skill_level = 20
-                contempt = 20
-                force_variation = False
+                # 兜底：无任何设置对象时，从 Setting 默认值取（与设置文件同源，避免硬编码）
+                d = Setting()
+                depth = d.depth
+                time_ms = d.thinking_time * 1000
+                skill_level = d.skill_level
+                contempt = d.contempt
+                force_variation = d.force_variation
 
             self._send_command(f'setoption name Skill Level value {skill_level}')
             self._send_command(f'setoption name Contempt value {contempt}')
             multipv_value = top_n
             if force_variation:
-                # 强制变着：加深搜索（同 _search_once）并至少开 3 路以取得变化着法
+                # 强制变着：加深搜索（同 _search_once）并至少开 2 路以取得变化着法
                 depth += 3
-                multipv_value = max(top_n, 3)
+                multipv_value = max(top_n, 2)
             self._send_command(f'setoption name MultiPV value {multipv_value}')
             self._send_command(f'go depth {depth} movetime {time_ms}')
 
@@ -537,6 +567,11 @@ class PikafishAI:
             except Exception as e:
                 print(f"读取多路着法失败: {e}")
             finally:
+                if self.should_stop:
+                    try:
+                        self._stop_and_drain()
+                    except Exception:
+                        pass
                 self.is_searching = False
 
             results = []
