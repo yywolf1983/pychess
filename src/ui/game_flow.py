@@ -20,9 +20,11 @@ class GameFlowMixin:
         
         self.is_ai_thinking = False
         self.ai.close()
-        
+        self.eval_ai.close()
+
         if self.game_mode != 'pvp':
             self.ai.initialize()
+            self._init_eval_engine()
         
         if self.game_mode == 'mvm':
             if self.chess_info.get_game_status() == 'playing':
@@ -37,6 +39,18 @@ class GameFlowMixin:
                 self.start_ai_turn()
 
 
+    def _init_eval_engine(self):
+        """初始化独立的评估引擎，并把线程数减半，避免与行棋引擎(self.ai)争用 CPU。"""
+        self.eval_ai.initialize()
+        try:
+            t = max(2, self.eval_ai._default_threads() // 2)
+            self.eval_ai._send_command(f'setoption name Threads value {t}')
+            self.eval_ai._send_command('isready')
+            self.eval_ai.threads = t
+        except Exception as e:
+            print('评估引擎线程调整失败:', e)
+
+
     def reset_game(self):
         self.chess_info.reset()
         # 重置当前方行棋计时
@@ -44,6 +58,7 @@ class GameFlowMixin:
         self._last_red_go = self.chess_info.is_red_go
         self._turn_elapsed_frozen = 0.0
         self.ai.close()
+        self.eval_ai.close()
         self.is_ai_thinking = False
         self.hint_loading = False
         self.draw_loading = False
@@ -62,6 +77,7 @@ class GameFlowMixin:
 
         if self.game_mode != 'pvp':
             self.ai.initialize()
+            self._init_eval_engine()
             print(f"AI initialized: {self.ai.is_initialized()}")
 
         if self.game_mode == 'mvm':
@@ -604,10 +620,6 @@ class GameFlowMixin:
     def ai_move(self):
         try:
             print(f"ai_move called. is_red_go={self.chess_info.is_red_go}, game_mode={self.game_mode}, player_color={self.player_color}")
-
-            # 取消可能正在进行的后台评估（使 eval 线程丢弃其结果），确保 AI 行棋使用
-            # 自身独立的搜索结果，绝不复用评估算出的着法；引擎由 self.lock 串行保护，不会交错。
-            self.eval_gen += 1
 
             move = self.ai.get_best_move(self.chess_info, self.settings)
             print(f"AI returned move: from ({move.from_pos.x},{move.from_pos.y}) to ({move.to_pos.x},{move.to_pos.y}), valid={move.is_valid()}")

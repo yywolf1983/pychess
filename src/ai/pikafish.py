@@ -247,7 +247,8 @@ class PikafishAI:
                 threads = self._default_threads()
                 self.threads = threads
                 self._send_command(f'setoption name Threads value {threads}')
-                self._send_command('setoption name Hash value 128')
+                self.hash_size = 128
+                self._send_command(f'setoption name Hash value {self.hash_size}')
                 self._send_command('isready')
                 
                 ready_ok_received = False
@@ -286,6 +287,19 @@ class PikafishAI:
             if not line or line.startswith('bestmove'):
                 break
         return None
+
+    def _clear_tt(self):
+        """每次搜索前强制重建哈希表(置换表)，确保都是基于当前局面重新计算，
+        不复用上一手行棋残留在引擎中的局面信息。"""
+        try:
+            base = getattr(self, 'hash_size', 128)
+            alt = max(1, base // 2)
+            # 改变 Hash 数值会触发引擎重新分配置换表，从而清空上一次的搜索残存
+            self._send_command(f'setoption name Hash value {alt}')
+            self._send_command(f'setoption name Hash value {base}')
+        except Exception:
+            pass
+
     
     def get_best_move(self, chess_info: ChessInfo, settings=None) -> Move:
         result = self.get_best_move_with_score(chess_info, settings)
@@ -363,6 +377,9 @@ class PikafishAI:
             if force_variation:
                 # MultiPV 至少 2 路，才能取出与最优着法不同的变着（尊重设置里的 multi_pv）
                 self._send_command(f'setoption name MultiPV value {max(multi_pv, 2)}')
+
+            # 清空引擎置换表，保证本次行棋是基于当前局面的全新计算（不复用上一手残存信息）
+            self._clear_tt()
 
             # 以“思考时间”为主控：深度按用户设置上限（depth）作为兜底，movetime 控制实际思考时长；
             # 当设置深度较高（如 120）时时间先到，引擎会思考满设定时长。
@@ -517,6 +534,8 @@ class PikafishAI:
                 # 强制变着：至少开 2 路以取得变化着法
                 multipv_value = max(top_n, 2)
             self._send_command(f'setoption name MultiPV value {multipv_value}')
+            # 清空引擎置换表，保证本次是全新计算（不复用上一手残存信息）
+            self._clear_tt()
             # 以“思考时间”为主控：深度按用户设置上限（depth）作为兜底，movetime 控制实际思考时长
             go_cmd = f'go depth {depth} movetime {time_ms}'
             print(f'[GO] {go_cmd}')

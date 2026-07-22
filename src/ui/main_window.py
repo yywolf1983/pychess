@@ -57,6 +57,9 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             self.screen.subsurface((0, self.board_offset_y, self.board_width, self.board_height)),
             self.chess_info)
         self.ai = PikafishAI()
+        # 独立于行棋引擎的“评估引擎”：评分/曲线/和棋判定都走它，
+        # 与 self.ai（AI 行棋、支招）完全隔离，互不影响、互不抢占线程。
+        self.eval_ai = PikafishAI()
         self.settings = Setting()
         self.settings.load()
         self._sync_settings()
@@ -557,5 +560,6 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             self.clock.tick(30)
 
         self.ai.close()
+        self.eval_ai.close()
         pygame.quit()
 

@@ -196,7 +196,7 @@ class WidgetsMixin:
 
 
     def _draw_section(self, x, y, title):
-        self._draw_text_left(title, x, y, 'small', (150, 172, 200))
+        self._draw_text_left(title, x, y, 'ssmall', (150, 172, 200))
         pygame.draw.line(self.screen, (140, 160, 185, 130),
                          (x, y + 16), (x + self.sidebar_width - 40, y + 16), 1)
 

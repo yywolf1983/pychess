@@ -252,8 +252,8 @@ class HintEvalMixin:
 
         电脑不占优（ <= 阈值）则接受，否则拒绝。
         """
-        if not self.ai.is_initialized():
-            self.ai.initialize()
+        if not self.eval_ai.is_initialized():
+            self.eval_ai.initialize()
         self.draw_loading = True
         t = threading.Thread(target=self._compute_rule_draw)
         t.daemon = True
@@ -269,7 +269,7 @@ class HintEvalMixin:
             settings.multi_pv = 1
             settings.contempt = self.settings.contempt
             settings.force_variation = False
-            result = self.ai.get_best_move_with_score(self.chess_info, settings)
+            result = self.eval_ai.get_best_move_with_score(self.chess_info, settings)
             # score 为正表示行棋方（电脑）占优
             accept = result is not None and result.score <= 30
             self.draw_response_queue.put(accept)
@@ -282,8 +282,8 @@ class HintEvalMixin:
         """后台评估当前局面评分（红方视角），并更新评分曲线。"""
         if not force and (self.eval_loading or self.is_ai_thinking):
             return
-        if not self.ai.is_initialized():
-            self.ai.initialize()
+        if not self.eval_ai.is_initialized():
+            self.eval_ai.initialize()
         self.eval_gen += 1
         self.eval_loading = True
         t = threading.Thread(target=self._compute_eval)
@@ -301,7 +301,7 @@ class HintEvalMixin:
             settings.multi_pv = 1
             settings.contempt = self.settings.contempt
             settings.force_variation = False
-            result = self.ai.get_best_move_with_score(self.chess_info, settings)
+            result = self.eval_ai.get_best_move_with_score(self.chess_info, settings)
             if gen != self.eval_gen:
                 return
             if result is not None:
@@ -310,7 +310,7 @@ class HintEvalMixin:
                 red_persp = raw if self.chess_info.is_red_go else -raw
                 self.eval_score = red_persp
                 self.eval_history.append(red_persp)
-                self.eval_depth = self.ai.current_depth
+                self.eval_depth = self.eval_ai.current_depth
         except Exception as e:
             print('评估失败:', e)
         finally:
@@ -355,7 +355,7 @@ class HintEvalMixin:
                 ci = self.chess_info.clone()
                 ci.piece = [row[:] for row in snapshots[i]]
                 ci.is_red_go = start_red if i % 2 == 0 else (not start_red)
-                res = self.ai.get_best_move_with_score(ci, s)
+                res = self.eval_ai.get_best_move_with_score(ci, s)
                 red_persp = res.score if ci.is_red_go else -res.score
                 red_persp = max(-2000, min(2000, red_persp))
                 self.eval_by_step[i] = red_persp

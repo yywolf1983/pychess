@@ -426,11 +426,11 @@ class SidebarMixin:
         # 音效设置
         self._draw_section(content_x, card_y + 96, '音效设置')
         music_check_rect = pygame.Rect(card_x + card_w - 90, card_y + 110, 42, 42)
-        self._draw_text_left('背景音乐', content_x, card_y + 132, 'small', (60, 72, 92))
+        self._draw_text_left('背景音乐', content_x, card_y + 132, 'ssmall', (60, 72, 92))
         self._draw_toggle(music_check_rect, self.settings.is_music_play)
 
         effect_check_rect = pygame.Rect(card_x + card_w - 90, card_y + 160, 42, 42)
-        self._draw_text_left('音效', content_x, card_y + 182, 'small', (60, 72, 92))
+        self._draw_text_left('音效', content_x, card_y + 182, 'ssmall', (60, 72, 92))
         self._draw_toggle(effect_check_rect, self.settings.is_effect_play)
 
         # AI 设置（参数对齐 Android 版）
@@ -445,9 +445,9 @@ class SidebarMixin:
 
         def draw_row(y, label, value, vmin, vmax, attr, key, hint='',
                      hint_color=(150, 162, 180)):
-            self._draw_text_left(f'{label}: {value}', content_x, y, 'small', (60, 72, 92))
+            self._draw_text_left(f'{label}: {value}', content_x, y, 'ssmall', (60, 72, 92))
             if hint:
-                self._draw_text_left(hint, content_x, y + 19, 'tiny', hint_color)
+                self._draw_text_left(hint, content_x, y + 17, 'tiny', hint_color)
             # 固定布局：减号在左、滑条居中、加号在右 → [−][滑条][+]
             plus_rect = pygame.Rect(col_r - plus_w, y - 18, plus_w, 36)
             track = pygame.Rect(plus_rect.x - gap - slider_w, y - 9, slider_w, 6)
@@ -459,8 +459,8 @@ class SidebarMixin:
                                           'vmin': vmin, 'vmax': vmax, 'attr': attr})
             return minus_rect, plus_rect
 
-        row_top = card_y + 272
-        row_step = 70
+        row_top = card_y + 268
+        row_step = 60
         depth_minus_rect, depth_plus_rect = draw_row(
             row_top, '搜索深度 (层)', self.settings.depth, 5, 120, 'depth', 'depth',
             '每步向前推演的层数上限（越大越慢、越准）')
@@ -478,7 +478,7 @@ class SidebarMixin:
         # 强制变着（对齐 Android）
         force_y = row_top + 4 * row_step
         force_check_rect = pygame.Rect(card_x + card_w - 90, force_y - 12, 42, 42)
-        self._draw_text_left('强制变着', content_x, force_y + 10, 'small', (60, 72, 92))
+        self._draw_text_left('强制变着', content_x, force_y + 10, 'ssmall', (60, 72, 92))
         self._draw_text_left('开启后尽量偏离常规最优着法，增加对局变化',
                              content_x, force_y + 29, 'tiny', (150, 162, 180))
         self._draw_toggle(force_check_rect, self.settings.force_variation)
@@ -589,6 +589,13 @@ class SidebarMixin:
             self.ai._send_command(f'setoption name Contempt value {self.settings.contempt}')
             self.ai._send_command(f'setoption name MultiPV value {self.settings.multi_pv}')
             self.ai._send_command('isready')
+        # 同步应用到独立的评估引擎（线程数保持减半，不在此覆盖）
+        eval_ai = getattr(self, 'eval_ai', None)
+        if eval_ai is not None and eval_ai.initialized:
+            eval_ai._send_command(f'setoption name Skill Level value {self.settings.skill_level}')
+            eval_ai._send_command(f'setoption name Contempt value {self.settings.contempt}')
+            eval_ai._send_command(f'setoption name MultiPV value {self.settings.multi_pv}')
+            eval_ai._send_command('isready')
 
 
     def _sync_settings(self):

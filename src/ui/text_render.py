@@ -75,7 +75,7 @@ class TextRenderMixin:
             return None
 
         # 各档位对应的像素字号
-        size_map = {'large': 42, 'medium': 34, 'small': 28, 'xsmall': 18, 'tiny': 13}
+        size_map = {'large': 42, 'medium': 34, 'small': 28, 'ssmall': 21, 'xsmall': 18, 'tiny': 13}
         px = size_map.get(font_size, 28)
 
         # 路径1：PIL 高质量 CJK 渲染（使用随项目打包 / 系统解析出的中文字体）
