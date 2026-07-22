@@ -70,6 +70,9 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.ai_thread = None
         self.ai_result_queue = queue.Queue()
         self._ai_no_result = object()
+        # 用户主动中断 AI 行棋的请求标记：置位后主循环丢弃 AI 返回的着法，
+        # 把行棋权交还人类（而非让 AI 立即落子）。
+        self._ai_abort_requested = False
         self.hint_queue = queue.Queue()
         self._hint_no_result = object()
         self.hint_loading = False
@@ -464,7 +467,18 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                 ai_result = self._ai_no_result
 
             if ai_result is not self._ai_no_result:
-                if ai_result is None:
+                if self._ai_abort_requested:
+                    # 用户中断 AI：丢弃本次着法，切换为双人模式，行棋方保持不变
+                    self._ai_abort_requested = False
+                    self.is_ai_thinking = False
+                    self.chess_info.is_machine = False
+                    self.chess_info.status = 0
+                    self.game_mode = 'pvp'
+                    # 丢弃 AI 思考时实时覆盖的最后一步评分，避免曲线出现半成品分值
+                    if self.eval_history:
+                        self.eval_history.pop()
+                    self.show_toast('已中断 AI，切换为双人对战')
+                elif ai_result is None:
                     # 引擎异常：释放思考锁，避免界面卡死
                     self.is_ai_thinking = False
                     self.chess_info.status = 0

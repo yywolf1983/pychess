@@ -35,6 +35,7 @@ class ChessView:
         self._piece_cy_off = -self.piece_size // 2
 
         self.images = self._load_images()
+        self._precompute_scaled()
 
         # 棋盘翻转：参考 Android 版「旋转棋盘」按钮，将整个棋盘视图做 180° 镜像，
         # 红/黑方上下对调。棋子与文字仍保持正向绘制（仅棋盘布局旋转）。
@@ -46,6 +47,45 @@ class ChessView:
     def toggle_flip(self):
         """翻转棋盘视角（红/黑上下对调）。"""
         self.board_flipped = not self.board_flipped
+
+    def _precompute_scaled(self):
+        """将所有图片预缩放到目标尺寸并缓存，避免每帧重复 transform.scale 造成卡顿。"""
+        try:
+            if self.images.get('board'):
+                self._board_scaled = pygame.transform.scale(
+                    self.images['board'], (self.board_width, self.board_height))
+            else:
+                self._board_scaled = None
+        except Exception:
+            self._board_scaled = None
+
+        def scale_list(imgs):
+            out = []
+            for im in imgs or []:
+                if im is not None:
+                    try:
+                        out.append(pygame.transform.scale(
+                            im, (self.piece_size, self.piece_size)))
+                    except Exception:
+                        out.append(None)
+                else:
+                    out.append(None)
+            return out
+
+        self._black_scaled = scale_list(self.images.get('black'))
+        self._red_scaled = scale_list(self.images.get('red'))
+
+        def scale_one(im):
+            if im is not None:
+                try:
+                    return pygame.transform.scale(im, (self.piece_size, self.piece_size))
+                except Exception:
+                    return None
+            return None
+
+        self._r_box_scaled = scale_one(self.images.get('r_box'))
+        self._b_box_scaled = scale_one(self.images.get('b_box'))
+        self._pot_scaled = scale_one(self.images.get('pot'))
 
     def _gx_p(self, c):
         """物理列 c（0..8）的屏幕 x 像素；翻转时映射到 8-c 做水平镜像。"""
@@ -169,14 +209,11 @@ class ChessView:
         return images
     
     def draw(self):
-        if self.images['board']:
-            scaled_board = pygame.transform.scale(
-                self.images['board'], 
-                (self.board_width, self.board_height)
-            )
-            # 棋盘底图本身上下对称，无需旋转即可与翻转后的棋子布局对齐；
-            # 旋转反而会让「楚河漢界」文字倒置，故保持原样。
-            self.screen.blit(scaled_board, (0, 0))
+        # 棋盘底图：使用预缩放缓存，避免每帧重复 transform.scale 造成卡顿。
+        # 棋盘底图本身上下对称，无需旋转即可与翻转后的棋子布局对齐；
+        # 旋转反而会让「楚河漢界」文字倒置，故保持原样。
+        if self._board_scaled:
+            self.screen.blit(self._board_scaled, (0, 0))
         else:
             self._draw_chessboard_grid()
         
@@ -241,16 +278,12 @@ class ChessView:
                     
                     if piece_id <= 7:
                         idx = piece_id - 1
-                        if idx >= 0 and idx < len(self.images['black']) and self.images['black'][idx]:
-                            piece_img = pygame.transform.scale(
-                                self.images['black'][idx], (self.piece_size, self.piece_size))
-                            self.screen.blit(piece_img, (screen_x, screen_y))
+                        if 0 <= idx < len(self._black_scaled) and self._black_scaled[idx]:
+                            self.screen.blit(self._black_scaled[idx], (screen_x, screen_y))
                     else:
                         idx = piece_id - 8
-                        if idx >= 0 and idx < len(self.images['red']) and self.images['red'][idx]:
-                            piece_img = pygame.transform.scale(
-                                self.images['red'][idx], (self.piece_size, self.piece_size))
-                            self.screen.blit(piece_img, (screen_x, screen_y))
+                        if 0 <= idx < len(self._red_scaled) and self._red_scaled[idx]:
+                            self.screen.blit(self._red_scaled[idx], (screen_x, screen_y))
     
     def _draw_selected(self):
         if self.chess_info.select.x >= 0 and self.chess_info.select.y >= 0:
@@ -269,11 +302,10 @@ class ChessView:
                 ov.fill((*overlay_color, 64))
                 self.screen.blit(ov, (screen_x, screen_y))
 
-                box_img = self.images['r_box'] if is_red_piece else self.images['b_box']
-                
+                box_img = self._r_box_scaled if is_red_piece else self._b_box_scaled
+
                 if box_img:
-                    box_scaled = pygame.transform.scale(box_img, (self.piece_size, self.piece_size))
-                    self.screen.blit(box_scaled, (screen_x, screen_y))
+                    self.screen.blit(box_img, (screen_x, screen_y))
     
     def _draw_possible_moves(self):
         if self.chess_info.ret:
@@ -281,10 +313,8 @@ class ChessView:
                 screen_x = self._gx_p(pos.x) + self._piece_cx_off
                 screen_y = self._gy_p(9 - pos.y) + self._piece_cy_off
                 
-                if self.images['pot']:
-                    pot_scaled = pygame.transform.scale(
-                        self.images['pot'], (self.piece_size, self.piece_size))
-                    self.screen.blit(pot_scaled, (screen_x, screen_y))
+                if self._pot_scaled:
+                    self.screen.blit(self._pot_scaled, (screen_x, screen_y))
     
     def _draw_move_trail(self):
         if (self.chess_info.pre_pos.x >= 0 and self.chess_info.cur_pos.x >= 0 and
@@ -305,12 +335,11 @@ class ChessView:
             cur_screen_y = self._gy_p(draw_cur_y) + self._piece_cy_off
             
             is_black_piece = piece_id >= 1 and piece_id <= 7
-            box_img = self.images['b_box'] if is_black_piece else self.images['r_box']
-            
+            box_img = self._b_box_scaled if is_black_piece else self._r_box_scaled
+
             if box_img:
-                box_scaled = pygame.transform.scale(box_img, (self.piece_size, self.piece_size))
-                self.screen.blit(box_scaled, (cur_screen_x, cur_screen_y))
-                self.screen.blit(box_scaled, (pre_screen_x, pre_screen_y))
+                self.screen.blit(box_img, (cur_screen_x, cur_screen_y))
+                self.screen.blit(box_img, (pre_screen_x, pre_screen_y))
                 
                 overlay_color = (20, 200, 255) if is_black_piece else (255, 200, 0)
                 overlay_surface = pygame.Surface((self.piece_size, self.piece_size), pygame.SRCALPHA)

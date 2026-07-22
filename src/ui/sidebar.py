@@ -195,6 +195,24 @@ class SidebarMixin:
             return f'{h}:{m:02d}:{s:02d}'
         return f'{m:02d}:{s:02d}'
 
+    def _toast_wrap(self, msg):
+        """按侧栏内容宽度对提示文字换行，返回 (行列表, 内容宽度)。"""
+        font_size = 'xsmall'      # 较小字号，确保长提示也能完整显示
+        color = (225, 235, 248)
+        cw = self.sidebar_width - 68   # 与 _draw_status_card 中 cw 保持一致
+        lines, cur = [], ''
+        for ch in msg:
+            test = cur + ch
+            surf = self._text_surface(test, font_size, color)
+            if surf and surf.get_width() > cw and cur:
+                lines.append(cur)
+                cur = ch
+            else:
+                cur = test
+        if cur:
+            lines.append(cur)
+        return (lines or ['']), cw
+
     def _status_card_height(self):
         h = 22 + 34 + 38          # 标题 + 回合色块
         if self.chess_info.is_checked:
@@ -203,7 +221,9 @@ class SidebarMixin:
             h += 48
         h += 6 * 28               # 评分 / 步数 / 深度 / AI / 线程 / 行棋时间
         if self.toast and time.time() <= self.toast_until:
-            h += 56
+            # 按实际换行行数预留高度，避免提示文字被截断
+            lines, _ = self._toast_wrap(self.toast)
+            h += len(lines) * 22 + 22
         h += 18                   # 底部留白
         return h
 
@@ -287,15 +307,17 @@ class SidebarMixin:
         if self.toast and time.time() <= self.toast_until:
             cy += 6
             msg = self.toast
-            chars_per_line = max(1, cw // 26)
-            nlines = max(1, math.ceil(len(msg) / chars_per_line))
-            box_h = nlines * 24 + 14
+            lines, _ = self._toast_wrap(msg)
+            line_h = 22
+            box_h = len(lines) * line_h + 16
             box = pygame.Rect(cx - 4, cy, cw + 8, box_h)
             surf = pygame.Surface((box.width, box.height), pygame.SRCALPHA)
             surf.fill((36, 50, 70, 245))
             self.screen.blit(surf, (box.x, box.y))
             pygame.draw.rect(self.screen, (120, 150, 190), box, 1, border_radius=6)
-            self._draw_wrapped_text(msg, cx, cy + 9, cw, 24, (225, 235, 248), 'small')
+            for i, ln in enumerate(lines):
+                self._draw_text_left(ln, cx, cy + 8 + i * line_h,
+                                     'xsmall', (225, 235, 248))
             cy += box_h + 4
 
     def _draw_banner(self, x, y, w, h, color, text, sub=None):
