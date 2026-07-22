@@ -86,7 +86,7 @@ def move_to_chinese(pid: int, fx: int, fy: int, tx: int, ty: int,
 
     board 为可选当前棋盘二维数组：提供时若同列存在同名同方棋子，源子改用
     「前/后/中」或数字前缀区分，与标准记谱及反向解析保持一致。
-    黑方走法使用全角数字（与 Android 版 ChineseChess 保存格式一致）。
+    走法使用全角数字（与 Android 版 ChineseChess 保存格式一致）。
     """
     if pid <= 0:
         return ""

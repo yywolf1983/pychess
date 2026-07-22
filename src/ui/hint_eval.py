@@ -213,7 +213,7 @@ class HintEvalMixin:
     def query_ai_rule_draw(self):
         """规则触发和棋提示（人机模式）：后台询问电脑是否接受和棋。
 
-        电脑不占优（评分 <= 阈值）则接受，否则拒绝。
+        电脑不占优（ <= 阈值）则接受，否则拒绝。
         """
         if not self.ai.is_initialized():
             self.ai.initialize()
@@ -363,9 +363,9 @@ class HintEvalMixin:
             mate = score > 0
             return ('红方 将杀' if mate else '黑方 将杀'), ((214, 56, 56) if mate else (45, 45, 48))
         if score > 0:
-            return f'红方 +{score}', (214, 56, 56)
+            return f' +{score}', (214, 56, 56)
         if score < 0:
-            return f'黑方 +{-score}', (45, 45, 48)
+            return f' +{-score}', (45, 45, 48)
         return '均势', (120, 132, 150)
 
 

@@ -175,9 +175,12 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         pad = 10
         gap = 8
         n = len(menu_items)
-        # 菜单按钮只占棋盘区域宽度，右侧留给菜单栏的品牌（「中国象棋」），避免覆盖
-        bw = (self.board_width - 2 * pad - (n - 1) * gap) / n
-        bh = 38
+        # 品牌移到窗口最右侧，菜单按钮利用品牌左侧的整段空间，使每个按钮适度加宽
+        brand_w_est = 170   # 「中国象棋」(large 字号) 估算宽度
+        brand_x = self.window_width - brand_w_est - 16
+        menu_right = brand_x - 16
+        bw = (menu_right - pad - (n - 1) * gap) / n
+        bh = 40
         by = (self.menu_h - bh) // 2
         for i, (key, label, icon, kind) in enumerate(menu_items):
             x = pad + i * (bw + gap)

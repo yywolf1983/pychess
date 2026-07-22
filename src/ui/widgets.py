@@ -1,5 +1,6 @@
 import os
 import json
+import math
 import pygame
 import threading
 import time
@@ -74,7 +75,6 @@ class WidgetsMixin:
 
 
     def _draw_button_glyph(self, rect, kind, color, cx=None, cy=None):
-        import math
         if cx is None:
             cx = rect.x + 16
         if cy is None:
@@ -86,9 +86,9 @@ class WidgetsMixin:
             pygame.draw.polygon(self.screen, color,
                                 [(cx + d * s, cy), (cx + d * s - d * 6, cy - 6), (cx + d * s - d * 6, cy + 6)])
         elif kind == 'undo':
-            pygame.draw.arc(self.screen, color, (cx - 9, cy - 7, 18, 14), 0.5, 5.4, 3)
-            pygame.draw.polygon(self.screen, color,
-                                [(cx - 9, cy), (cx - 3, cy - 5), (cx - 3, cy + 5)])
+            # 回退：逆时针 3/4 圈弧形箭头，箭头在左侧，指向「后退」方向
+            self._draw_circular_arrow(cx, cy, 9, 180, 290, ccw=True, color=color,
+                                      width=3, ah=7)
         elif kind == 'restart':
             pygame.draw.arc(self.screen, color, (cx - 9, cy - 9, 18, 18), 0.4, 5.6, 3)
             pygame.draw.polygon(self.screen, color,
@@ -109,26 +109,50 @@ class WidgetsMixin:
                 x2, y2 = cx + 10 * math.cos(ang), cy + 10 * math.sin(ang)
                 pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), 2)
         elif kind == 'flip':
-            # 旋转箭头（↻）：约 3/4 圈弧线 + 末端箭头，表示翻转棋盘
-            r = 9
-            start = math.radians(40)
-            end = math.radians(320)
-            pygame.draw.arc(self.screen, color, (cx - r, cy - r, 2 * r, 2 * r), start, end, 3)
-            ex, ey = cx + r * math.cos(end), cy + r * math.sin(end)
-            tx, ty = -math.sin(end), math.cos(end)   # 切向（运动方向）
-            px, py = math.cos(end), math.sin(end)    # 径向
-            ah = 6
-            pygame.draw.polygon(self.screen, color, [
-                (ex, ey),
-                (ex - ah * tx + ah * 0.5 * px, ey - ah * ty + ah * 0.5 * py),
-                (ex - ah * tx - ah * 0.5 * px, ey - ah * ty - ah * 0.5 * py),
-            ])
+            # 翻转棋盘：顺时针双箭头圆环（刷新/旋转意象），明确区别于「悔棋」单箭头
+            self._draw_circular_arrow(cx, cy, 9, 60, 300, ccw=False, color=color,
+                                      width=3, ah=7, double=True)
         elif kind == 'check':
             # 勾选标记：表示当前选中的对战模式
             pygame.draw.line(self.screen, color, (cx - 7, cy), (cx - 1, cy + 7), 3)
             pygame.draw.line(self.screen, color, (cx - 1, cy + 7), (cx + 8, cy - 7), 3)
         else:
             pygame.draw.circle(self.screen, color, (cx, cy), s, 2)
+
+
+    def _arrow_head(self, hx, hy, tx, ty, px, py, color, ah):
+        """在 (hx,hy) 处画箭头：tx,ty 为运动切线方向，px,py 为径向。"""
+        pygame.draw.polygon(self.screen, color, [
+            (hx, hy),
+            (hx - ah * tx + ah * 0.5 * px, hy - ah * ty + ah * 0.5 * py),
+            (hx - ah * tx - ah * 0.5 * px, hy - ah * ty - ah * 0.5 * py),
+        ])
+
+    def _draw_circular_arrow(self, cx, cy, r, head_deg, span_deg, ccw, color,
+                             width=3, ah=7, double=False):
+        """绘制圆环弧形箭头。head_deg 为箭头所在角度（度），span_deg 为弧跨度，
+        ccw=True 表示逆时针行进（角度递增）。double=True 时两端都画箭头，呈刷新/旋转意象。"""
+        head = math.radians(head_deg)
+        span = math.radians(span_deg)
+        start = head
+        end = head + span if ccw else head - span
+        pygame.draw.arc(self.screen, color,
+                        (cx - r, cy - r, 2 * r, 2 * r), start, end, width)
+        # 起点（head）箭头，沿运动切向
+        if ccw:
+            htx, hty = -math.sin(head), math.cos(head)
+        else:
+            htx, hty = math.sin(head), -math.cos(head)
+        hpx, hpy = math.cos(head), math.sin(head)
+        self._arrow_head(cx + r * hpx, cy + r * hpy, htx, hty, hpx, hpy, color, ah)
+        if double:
+            # 终点箭头，运动方向相反
+            if ccw:
+                ttx, tty = -math.sin(end), math.cos(end)
+            else:
+                ttx, tty = math.sin(end), -math.cos(end)
+            tpx, tpy = math.cos(end), math.sin(end)
+            self._arrow_head(cx + r * tpx, cy + r * tpy, ttx, tty, tpx, tpy, color, ah)
 
 
     def _draw_star(self, cx, cy, r_out, r_in, color):

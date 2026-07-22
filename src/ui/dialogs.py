@@ -119,10 +119,13 @@ class DialogsMixin:
         if status == 'checkmate':
             # 将死的行棋方为负，对方获胜
             winner = '红方' if not self.chess_info.is_red_go else '黑方'
-            color = (214, 56, 56) if winner == '红方' else (45, 45, 48)
-            return f'{winner}获胜！', color, None
+            color = (214, 56, 56) if winner == '红方' else (74, 84, 100)
+            return f'{winner}获胜！', color, '将死'
         if status == 'stalemate':
-            return '和棋！', (128, 128, 128), '困毙'
+            # 中国象棋规则：困毙（无棋可走且未被将军）判负，敌方获胜，而非和棋
+            winner = '红方' if not self.chess_info.is_red_go else '黑方'
+            color = (214, 56, 56) if winner == '红方' else (74, 84, 100)
+            return f'{winner}获胜！', color, '困毙'
         if status == 'draw':
             reason = self.chess_info.draw_reason or '协议和棋'
             return '和棋！', (128, 128, 128), reason
@@ -130,8 +133,11 @@ class DialogsMixin:
 
 
     def _draw_game_over(self):
-        """对局结束后在棋盘区叠加半透明遮罩与醒目结果提示。"""
-        status = self.chess_info.get_game_status()
+        """对局结束后在棋盘区叠加半透明遮罩与醒目结果提示。
+
+        按需求不显示该浮窗（结果仍在对局状态卡片的终局横幅中展示），直接返回。
+        """
+        return
         # 仅“将死/困毙/和棋”才视为终局；AI 思考中(status=thinking)不算结束
         if status in ('playing', 'thinking'):
             return

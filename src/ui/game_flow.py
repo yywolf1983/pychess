@@ -666,13 +666,9 @@ class GameFlowMixin:
 
         status = self.chess_info.get_game_status()
         if status != 'playing':
+            # 终局结果改在对局状态卡片的终局横幅中展示，不再弹出浮窗提示
             res_text = self._result_info()[0] if self._result_info() else ''
-            if status == 'checkmate':
-                self.show_toast('将死！' + res_text)
-            elif status == 'stalemate':
-                self.show_toast('困毙！' + res_text)
-            else:
-                self.show_toast(res_text)
+            _ = res_text
         elif self.game_mode == 'mvm':
             self.start_ai_turn()
 

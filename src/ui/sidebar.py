@@ -49,8 +49,8 @@ class SidebarMixin:
         mode_btn = next(b for b in self.menu_buttons if b['key'] == 'mode')
         pygame.draw.line(self.screen, (64, 82, 108),
                          (mode_btn['rect'].x - 16, 18), (mode_btn['rect'].x - 16, self.menu_h - 18), 1)
-        # 品牌（右侧）
-        bx = self.board_width + 24
+        # 品牌（窗口最右侧）
+        bx = self.window_width - 170 - 16
         by = self.menu_h // 2
         self._draw_text_left('中国象棋', bx + 4, by, 'large', (245, 212, 132))
 
@@ -212,7 +212,7 @@ class SidebarMixin:
         score_text, score_color = self._format_score(self.eval_score)
         depth = self._current_depth()
         depth_text = f'{depth} 层' if depth else '—'
-        ai_status = 'AI 思考中…' if self.is_ai_thinking else 'AI 就绪'
+        ai_status = '思考中…' if self.is_ai_thinking else 'AI 就绪'
         ai_col = (90, 156, 72) if not self.is_ai_thinking else (230, 132, 32)
         for label, value, vcol in (
             ('评分', score_text, score_color),
