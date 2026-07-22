@@ -111,6 +111,9 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.eval_depth = 0
         self.eval_gen = 0
         self.eval_loading = False
+        # 与 board_snapshots 对齐的分步评分（红方视角；None=未计算），用于加载棋谱后的评分曲线
+        self.eval_by_step = []
+        self.eval_step_gen = 0  # 批量评分代际号，用于取消过期的后台批量评分
         self.ai_lines = []  # 支招/分析浮层：每条候选 = {score, my, opp, my_is_red}
         # 摆棋（局面编辑）状态
         self.editing = False
