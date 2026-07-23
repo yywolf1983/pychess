@@ -30,6 +30,7 @@ desktop.ini
 # ---------- 本地项目数据 ----------
 .codebuddy/
 config/settings.json
+saves/
 
 # ---------- 日志 / 临时文件 ----------
 *.log

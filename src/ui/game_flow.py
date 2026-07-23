@@ -79,6 +79,10 @@ class GameFlowMixin:
         self.edit_piece = None
         self.edit_ui = {}
         self._reset_snapshots()
+        # 新局：清除棋谱加载状态（回到「未加载棋谱」语义，上一步/下一步置灰、悔棋可用）
+        self.notation_loaded = False
+        self._notation_moves = []
+        self._notation_snapshots = []
 
         if self.game_mode != 'pvp':
             # 后台完整预初始化引擎（进程启动 + NNUE 加载），避免新局首步
@@ -204,6 +208,16 @@ class GameFlowMixin:
         # 重放历史 → 记谱乱码与空步（「记谱缺失」）。仅退出浏览态即可。
         self.browse_index = None
 
+        # 棋谱偏离后悔棋回到对齐点（on_track）：恢复完整棋谱快照并重新进入浏览态，
+        # 确保「上一步/下一步」仍能继续浏览整局已加载棋谱（否则分支/悔棋后快照被
+        # 截断到偏离点，下一步无法再向前复盘剩余棋谱）。
+        if getattr(self, 'notation_loaded', False) and not self._is_deviated():
+            full = getattr(self, '_notation_snapshots', None)
+            if full:
+                self.board_snapshots = [[row[:] for row in snap] for snap in full]
+                self.browse_index = min(len(self.chess_info.move_history),
+                                        len(self.board_snapshots) - 1)
+
 
     def undo_edit(self):
         """摆棋模式下的悔棋：撤销上一次编辑操作（放置 / 移动 / 删除 / 清空），
@@ -276,6 +290,70 @@ class GameFlowMixin:
             self.show_toast('已回到实时对局')
             self.check_ai_turn()
         self._sync_eval_to_browse()
+
+
+    def _is_deviated(self):
+        """当前对局是否已偏离已加载棋谱。
+
+        偏离 = 已加载棋谱，且玩家实际着法（move_history）在某一步与棋谱着法不一致，
+        或走出了棋谱范围（着法数超过棋谱）。纯浏览（browse_index 不为 None）时视为
+        未偏离（只是查看，尚未行棋分叉）。
+        """
+        if not getattr(self, 'notation_loaded', False):
+            return False
+        nm = getattr(self, '_notation_moves', [])
+        if not nm:
+            # 仅加载了局面（无着法）：一旦行棋即视为偏离
+            return getattr(self, 'browse_index', None) is None and \
+                bool(self.chess_info.move_history)
+        # 纯浏览状态：以谱为准，未偏离
+        if getattr(self, 'browse_index', None) is not None:
+            return False
+        mh = self.chess_info.move_history
+        n = min(len(nm), len(mh))
+        for i in range(n):
+            a = nm[i]
+            b = mh[i]
+            if (a[0], a[1], a[2], a[3]) != (b.from_pos.x, b.from_pos.y,
+                                            b.to_pos.x, b.to_pos.y):
+                return True
+        # 着法数超过棋谱长度也视为偏离（走出了棋谱范围）
+        return len(mh) > len(nm)
+
+    def _nav_button_disabled(self, key):
+        """导航按钮（上一步/下一步/悔棋）的置灰判定，根据棋谱加载与偏离状态。
+
+        规则（与需求一致）：
+          - 未加载棋谱：上一步/下一步置灰，悔棋可用
+          - 已加载棋谱且未偏离：上一步/下一步可用，悔棋置灰
+          - 已加载棋谱且已偏离：上一步/下一步置灰，悔棋可用
+          - 悔棋回到偏离点（重新对齐棋谱）：上一步/下一步可用，悔棋置灰
+
+        额外：加载后停在第一步之前（browse_index=0，即起始局面），此时「上一步」
+        无可回退，置灰；浏览到最后一步（browse_index=末）时「下一步」无可前进，
+        亦置灰。上述边界仅在「已加载且未偏离」的浏览态（browse_index 为整数）生效。
+        """
+        loaded = bool(getattr(self, 'notation_loaded', False))
+        deviated = self._is_deviated()
+        on_track = loaded and not deviated
+        if key in ('prev', 'next'):
+            if not on_track:
+                return True
+            # 浏览边界：仅当处于整数浏览步（browse_index 不为 None）时判定。
+            # 加载后停在第一步之前（browse_index=0），「上一步」无可回退；
+            # 浏览到最后一步（browse_index=末）「下一步」无可前进，均置灰。
+            bi = getattr(self, 'browse_index', None)
+            snaps = getattr(self, 'board_snapshots', [])
+            if bi is not None:
+                if key == 'prev' and bi <= 0:
+                    return True
+                if key == 'next' and bi >= len(snaps) - 1:
+                    return True
+            return False
+        if key == 'undo':
+            # 仅当「已加载棋谱且已偏离」时可用
+            return on_track
+        return False
 
 
     def _side_name(self, side):
@@ -431,6 +509,7 @@ class GameFlowMixin:
             snapshots = [[row[:] for row in ci.piece]]
             is_red = start_red
             applied = 0
+            notation_moves = []
             for i, s in enumerate(move_strs):
                 turn_red = is_red
                 coords = pgn_lib.chinese_to_move(ci.piece, turn_red, s)
@@ -438,6 +517,7 @@ class GameFlowMixin:
                     self.show_toast(f'棋谱第 {i + 1} 步无法解析：{s}')
                     break
                 fx, fy, tx, ty = coords
+                notation_moves.append((fx, fy, tx, ty))
                 pid = ci.piece[fy][fx]
                 ci.move_history.append(Move(Pos(fx, fy), Pos(tx, ty)))
                 ci.piece[ty][tx] = pid
@@ -449,6 +529,12 @@ class GameFlowMixin:
             self.board_snapshots = snapshots
             self.browse_index = 0  # 加载后停在起始局面（第一步）
             self._pgn_start_red = start_red  # 供「浏览时行棋」分叉判定起始行棋方
+            # 记录已加载棋谱及其着法序列，供「上一步/下一步/悔棋」置灰判定
+            self.notation_loaded = True
+            self._notation_moves = notation_moves
+            # 保留完整棋谱快照副本；偏离后「悔棋」回到对齐点时据此恢复，
+            # 使「上一步/下一步」仍能继续浏览整局已加载棋谱。
+            self._notation_snapshots = [snap[:] for snap in snapshots]
 
             # 重放后行棋方应为「下一步轮到谁」，而非起点行棋方
             ci.is_red_go = is_red

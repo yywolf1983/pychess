@@ -30,13 +30,22 @@ class WidgetsMixin:
     def _draw_button(self, rect, label, font_size='small', base=(58, 78, 104),
                      hover=(100, 150, 255), active=False, text_color=(235, 240, 248),
                      icon=None, icon_only=False, badge=None, spinner=False, pulse=False,
-                     icon_color=None):
+                     icon_color=None, disabled=False):
         # 顶部「模式」菜单展开时，鼠标落在菜单面板上不应触发其下方按钮的悬停高亮
         captured = bool(getattr(self, 'mode_menu_open', False)) and \
             getattr(self, 'mode_menu_panel_rect', None) is not None and \
             self.mode_menu_panel_rect.collidepoint(self.mouse_pos)
         hovered = rect.collidepoint(self.mouse_pos) and not captured
-        color = hover if (hovered or active) else base
+        if disabled:
+            # 置灰禁用：与 ChineseChess 中 setEnabled(false)+alpha=0.4 的观感一致，
+            # 扁平暗灰、无悬停高亮、文字降透明。
+            color = (56, 64, 78)
+            label_color = (122, 134, 152)
+            glyph_color = (122, 134, 152)
+        else:
+            color = hover if (hovered or active) else base
+            label_color = (255, 255, 255) if (hovered or active) else text_color
+            glyph_color = icon_color if icon_color is not None else label_color
         # 阴影
         shadow = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
         pygame.draw.rect(shadow, (0, 0, 0, 50), shadow.get_rect(), border_radius=12)
@@ -44,12 +53,12 @@ class WidgetsMixin:
         # 主体
         pygame.draw.rect(self.screen, color, rect, border_radius=12)
         # 顶部高光
-        if hovered or active:
+        if (hovered or active) and not disabled:
             hi = pygame.Surface((rect.width, rect.height // 2), pygame.SRCALPHA)
             pygame.draw.rect(hi, (255, 255, 255, 45), hi.get_rect(), border_radius=12)
             self.screen.blit(hi, (rect.x, rect.y))
         # 脉冲呼吸光晕：支招中 / AI 思考中作为动态指示，让按钮“活着”地呼吸
-        if pulse:
+        if pulse and not disabled:
             p = 0.5 + 0.5 * math.sin(time.time() * 4.0)
             if getattr(self, 'hint_loading', False):
                 glow_col = (255, 205, 110)        # 支招中：暖金
@@ -59,8 +68,6 @@ class WidgetsMixin:
             pygame.draw.rect(soft, (*glow_col, int(20 + 28 * p)), soft.get_rect(), border_radius=12)
             self.screen.blit(soft, (rect.x, rect.y))
             pygame.draw.rect(self.screen, (*glow_col, int(70 + 90 * p)), rect, width=2, border_radius=12)
-        label_color = (255, 255, 255) if (hovered or active) else text_color
-        glyph_color = icon_color if icon_color is not None else label_color
         if icon:
             if icon_only:
                 # 仅图标按钮：图标居中偏上，下方附小号文字说明，保证可辨识

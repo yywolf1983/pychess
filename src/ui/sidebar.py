@@ -41,7 +41,8 @@ class SidebarMixin:
             self._draw_button(btn['rect'], label, 'small',
                               base=base, hover=hover, active=active,
                               text_color=(235, 240, 248), icon=icon,
-                              icon_color=icon_color, badge=badge)
+                              icon_color=icon_color, badge=badge,
+                              disabled=self._controls_disabled)
         # 分组分隔线：在「模式」按钮之前
         mode_btn = next(b for b in self.menu_buttons if b['key'] == 'mode')
         pygame.draw.line(self.screen, (64, 82, 108),
@@ -112,7 +113,8 @@ class SidebarMixin:
                           '完成编辑' if self.editing else '摆棋', 'large',
                           base=(70, 112, 86) if self.editing else (58, 78, 104),
                           hover=(96, 196, 130), active=self.editing,
-                          text_color=(235, 248, 240))
+                          text_color=(235, 248, 240),
+                          disabled=self._controls_disabled)
 
         if self.editing:
             self._draw_edit_panel(sb_x)
@@ -157,11 +159,21 @@ class SidebarMixin:
                 active = False
                 spinner = False
                 pulse = False
+            # 忙碌态（加载中）除「支招」「翻转」外一律置灰禁用，与 ChineseChess 按钮置灰逻辑一致
+            btn_disabled = self._controls_disabled and btn['key'] not in ('hint', 'flip')
+            # 导航按钮（上一步/下一步/悔棋）另按「棋谱加载 / 偏离」状态置灰：
+            #  - 未加载棋谱：上一步/下一步置灰，悔棋可用
+            #  - 已加载且未偏离：上一步/下一步可用，悔棋置灰
+            #  - 已加载且已偏离：上一步/下一步置灰，悔棋可用
+            #  - 悔棋回到偏离点（重新对齐）：上一步/下一步可用，悔棋置灰
+            if btn['key'] in ('prev', 'next', 'undo'):
+                btn_disabled = btn_disabled or self._nav_button_disabled(btn['key'])
             self._draw_button(btn['rect'], label, 'large',
                               base=base, hover=hover, active=active,
                               text_color=text_color, icon=icon,
                               icon_only=btn.get('icon_only', False),
-                              spinner=spinner, pulse=pulse)
+                              spinner=spinner, pulse=pulse,
+                              disabled=btn_disabled)
 
         # 布局：不显示棋谱列表，对局状态卡片占满侧栏主区域（与侧栏底部对齐），
         # 数据完整显示在框内。

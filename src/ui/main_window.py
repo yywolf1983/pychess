@@ -124,8 +124,13 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
 
         self.browse_index = None   # 局面浏览：None=实时对局；int=正在查看第 index 步
         self.board_snapshots = []  # 每一步（含初始）的棋盘快照，供上一步/下一步使用
+        self.notation_loaded = False   # 是否已加载棋谱（供上一步/下一步/悔棋置灰判定）
+        self._notation_moves = []      # 已加载棋谱的着法序列 [(fx,fy,tx,ty), ...]
+        self._notation_snapshots = []  # 已加载棋谱的完整逐步快照（偏离后悔棋恢复用）
 
-        self.save_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'saves')
+        # 棋谱默认存放目录：项目根目录下的 saves/（相对地址，便于随仓库迁移）
+        self.save_dir = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), '..', 'saves'))
         self.file_dialog = None    # 跨平台文件对话框（打开/保存棋谱）
 
         self.mouse_pos = (0, 0)
@@ -277,6 +282,36 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.edit_button = self.side_buttons[0]['rect']
 
 
+    @property
+    def _controls_disabled(self):
+        """忙碌态（加载中）：引擎计算中（AI 思考 / 支招 / 评估）或模拟行棋演示进行中。
+
+        统一用于锁定交互控件，与 ChineseChess 的 setButtonsDisabledExceptReturn 语义一致：
+        进入忙碌态禁用一组固定按钮并置灰，仅保留「支招」「翻转棋盘」可用。
+        """
+        return bool(getattr(self, 'is_ai_thinking', False) or
+                    getattr(self, 'hint_loading', False) or
+                    getattr(self, 'eval_loading', False) or
+                    getattr(self, 'simulating', False))
+
+    def _handle_locked_click(self, x: int, y: int):
+        """忙碌态下的受限点击处理：仅「支招」（含中断）与「翻转棋盘」可响应，其余忽略。
+
+        对应 ChineseChess 的 setButtonsDisabledExceptReturn —— 锁定绝大多数控件，
+        只保留 return(支招) 与 flip(翻转) 两个按钮可用。
+        """
+        # 模拟行棋演示时，底部面板的播放 / 候选交互照常
+        if self.simulating and y >= self.board_offset_y + self.board_height:
+            self._handle_sim_click(x, y)
+            return
+        # 仅侧栏中的「支招」「翻转」仍可用；顶部菜单与棋盘一律忽略
+        if y >= self.menu_h and x >= self.board_width and not self.editing:
+            for btn in self.side_buttons[1:]:
+                if btn['rect'].collidepoint(x, y):
+                    if btn['key'] in ('hint', 'flip'):
+                        self.handle_action(btn['key'])
+                    return
+
     def handle_click(self, x: int, y: int):
         if self.modal:
             rects = self._modal_button_rects()
@@ -284,6 +319,12 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                 if rects[i].collidepoint(x, y):
                     self._on_modal_button(btn['id'])
                     return
+            return
+
+        # 加载逻辑（与 ChineseChess setButtonsDisabledExceptReturn 同语义）：引擎思考 /
+        # 支招 / 评估 / 模拟行棋等忙碌态下锁定除「支招」「翻转」外的全部交互，其余点击忽略。
+        if self._controls_disabled:
+            self._handle_locked_click(x, y)
             return
 
         # 顶部菜单栏：新局 / 加载 / 保存 / 设置 + 模式（下拉）
@@ -336,6 +377,10 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             if not self.editing:
                 for btn in self.side_buttons[1:]:
                     if btn['rect'].collidepoint(x, y):
+                        # 置灰的导航按钮（上一步/下一步/悔棋）忽略点击
+                        if btn['key'] in ('prev', 'next', 'undo') and \
+                                self._nav_button_disabled(btn['key']):
+                            return
                         self.handle_action(btn['key'])
                         return
 
