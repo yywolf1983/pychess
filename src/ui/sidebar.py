@@ -22,29 +22,26 @@ class SidebarMixin:
         self._gradient_rect(bar, (40, 54, 74), (26, 36, 52))
         pygame.draw.line(self.screen, (64, 82, 108),
                          (0, self.menu_h - 1), (self.window_width, self.menu_h - 1), 1)
-        # 模式 -> 文字色块：每种模式一种辨识色，按钮上仅显示「模式」+ 当前色块
-        mode_color = {
-            'pvp': (76, 175, 80),        # 双人对战：绿
-            'pvm_red': (200, 60, 60),    # 玩家执红：红
-            'pvm_black': (70, 70, 84),   # 玩家执黑：深灰
-            'mvm': (90, 150, 235),       # 双机对战：蓝
-        }
         for btn in self.menu_buttons:
             key = btn['key']
             if btn['kind'] == 'mode':
-                label = '模式'
+                label = self.mode_label(full=False)
                 active = self.mode_menu_open
                 base, hover = (54, 72, 98), (216, 168, 80)
-                badge = mode_color.get(self.game_mode, (76, 175, 80))
+                icon = self.mode_icon_kind()
+                icon_color = self.mode_color()
+                badge = None
             else:
                 label = btn['label']
                 active = False
                 base, hover = (54, 72, 98), (100, 150, 255)
+                icon = btn.get('icon')
+                icon_color = None
                 badge = None
             self._draw_button(btn['rect'], label, 'small',
                               base=base, hover=hover, active=active,
-                              text_color=(235, 240, 248), icon=btn.get('icon'),
-                              badge=badge)
+                              text_color=(235, 240, 248), icon=icon,
+                              icon_color=icon_color, badge=badge)
         # 分组分隔线：在「模式」按钮之前
         mode_btn = next(b for b in self.menu_buttons if b['key'] == 'mode')
         pygame.draw.line(self.screen, (64, 82, 108),
@@ -62,12 +59,9 @@ class SidebarMixin:
             return
         # 以头部「模式」按钮为锚点，向下展开
         anchor = next(b['rect'] for b in self.menu_buttons if b['key'] == 'mode')
-        items = [
-            ('pvp', '双人对战', (76, 175, 80)),
-            ('pvm_red', '玩家执红', (200, 60, 60)),
-            ('pvm_black', '玩家执黑', (60, 60, 70)),
-            ('mvm', '双机对战', (90, 150, 235)),
-        ]
+        # 直接用 MODE_META 统一标签 / 图标 / 主题色
+        items = [(m, self.MODE_META[m][0], self.MODE_META[m][2]) for m in
+                 ('pvp', 'pvm_red', 'pvm_black', 'mvm')]
         row_h = 46
         pad = 6
         w = 240
@@ -94,7 +88,9 @@ class SidebarMixin:
             pygame.draw.rect(self.screen, bg, r, border_radius=6)
             # 左侧主题色条（选中项更长更亮，强化「已选」反馈）
             pygame.draw.rect(self.screen, color, pygame.Rect(r.x, r.y, 5, r.h), border_radius=3)
-            self._draw_text_left(label, r.x + 16, r.y + r.h // 2, 'small',
+            # 模式图标（主题色）置于文字前，一眼可辨
+            self._draw_button_glyph(r, 'mode_' + mode, color, r.x + 26, r.y + r.h // 2)
+            self._draw_text_left(label, r.x + 46, r.y + r.h // 2, 'small',
                                  (235, 240, 248))
             # 选中勾（用图标绘制，避免依赖系统对 ✓ 字形的支持）
             if sel:

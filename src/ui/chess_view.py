@@ -265,8 +265,79 @@ class ChessView:
         pygame.draw.line(self.screen, (0, 0, 0),
                          (self._gx_p(5), self._gy_p(7)), (self._gx_p(3), self._gy_p(9)), 2)
 
+    def _resolve_coord_font(self):
+        """解析一个含中文数字的字体（优先级：项目打包字体 -> 系统常见中文字体）。"""
+        here = os.path.dirname(__file__)
+        candidates = [
+            os.path.join(here, '..', '..', 'src', 'resources', 'fonts', 'cjk.ttf'),
+            'C:/Windows/Fonts/msyh.ttc',
+            'C:/Windows/Fonts/simhei.ttf',
+            '/System/Library/Fonts/PingFang.ttc',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        ]
+        for fp in candidates:
+            fp = os.path.normpath(fp)
+            if os.path.exists(fp):
+                return fp
+        return None
+
+    def _coord_font(self):
+        if getattr(self, '_cjk_font', None) is None:
+            path = self._resolve_coord_font()
+            size = max(13, int(24 * self.scale))
+            try:
+                self._cjk_font = (pygame.font.Font(path, size)
+                                  if path else pygame.font.SysFont(None, size))
+            except Exception:
+                self._cjk_font = pygame.font.SysFont(None, size)
+        return self._cjk_font
+
+    def _coord_font_bold(self):
+        if getattr(self, '_cjk_font_bold', None) is None:
+            font = self._coord_font()
+            try:
+                font.set_bold(True)        # 黑方数字加粗
+            except Exception:
+                pass
+            self._cjk_font_bold = font
+        return self._cjk_font_bold
+
+    def _draw_coord_text(self, text, cx, cy, color, bold=False):
+        font = self._coord_font_bold() if bold else self._coord_font()
+        try:
+            surf = font.render(text, True, color).convert_alpha()
+        except Exception:
+            return
+        self.screen.blit(surf, (int(cx - surf.get_width() // 2),
+                                int(cy - surf.get_height() // 2)))
+
     def _draw_coordinates(self):
-        pass
+        """棋盘上、下边缘标注列座标：红方用中文大写，黑方用数字。
+
+        红方在底边、黑方在顶边（未翻转时）；翻转后上下对调。两侧各自从己方
+        右手边起算 1，随棋盘一起镜像，保证红一始终贴红方右手。
+        """
+        CN = ['一', '二', '三', '四', '五', '六', '七', '八', '九']
+        AR = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
+        red_color = (196, 56, 48)     # 红方：红
+        black_color = (70, 70, 82)    # 黑方：深灰
+        # 黑方贴近边缘(0.3)；红方向内回收 0.1 -> 0.4（更靠近网格线）
+        top_y_black = int(self._gy(0) * 0.3)
+        bottom_y_black = int(self.board_height - (self.board_height - self._gy(9)) * 0.3)
+        top_y_red = int(self._gy(0) * 0.4)
+        bottom_y_red = int(self.board_height - (self.board_height - self._gy(9)) * 0.4)
+        for x in range(9):
+            sx = self._gx_p(x)
+            red_num = CN[8 - x]       # 红方右手(物理列8)=一，向左递增
+            black_num = AR[x]         # 黑方右手(物理列0)=1，向右递增
+            if self.board_flipped:
+                # 翻转后红方在上、黑方在下
+                self._draw_coord_text(red_num, sx, top_y_red, red_color)
+                self._draw_coord_text(black_num, sx, bottom_y_black, black_color, bold=True)
+            else:
+                # 未翻转：黑方在上、红方在下
+                self._draw_coord_text(black_num, sx, top_y_black, black_color, bold=True)
+                self._draw_coord_text(red_num, sx, bottom_y_red, red_color)
     
     def _draw_pieces(self):
         for y in range(10):

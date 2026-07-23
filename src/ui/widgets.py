@@ -29,7 +29,8 @@ class WidgetsMixin:
 
     def _draw_button(self, rect, label, font_size='small', base=(58, 78, 104),
                      hover=(100, 150, 255), active=False, text_color=(235, 240, 248),
-                     icon=None, icon_only=False, badge=None, spinner=False, pulse=False):
+                     icon=None, icon_only=False, badge=None, spinner=False, pulse=False,
+                     icon_color=None):
         # 顶部「模式」菜单展开时，鼠标落在菜单面板上不应触发其下方按钮的悬停高亮
         captured = bool(getattr(self, 'mode_menu_open', False)) and \
             getattr(self, 'mode_menu_panel_rect', None) is not None and \
@@ -59,17 +60,18 @@ class WidgetsMixin:
             self.screen.blit(soft, (rect.x, rect.y))
             pygame.draw.rect(self.screen, (*glow_col, int(70 + 90 * p)), rect, width=2, border_radius=12)
         label_color = (255, 255, 255) if (hovered or active) else text_color
+        glyph_color = icon_color if icon_color is not None else label_color
         if icon:
             if icon_only:
                 # 仅图标按钮：图标居中偏上，下方附小号文字说明，保证可辨识
-                self._draw_button_glyph(rect, icon, label_color, rect.centerx, rect.centery - 12)
+                self._draw_button_glyph(rect, icon, glyph_color, rect.centerx, rect.centery - 12)
                 cap = self._text_surface(label, 'tiny', label_color)
                 if cap:
                     self.screen.blit(cap, (rect.centerx - cap.get_width() // 2,
                                            rect.bottom - cap.get_height() - 8))
                 return
             icon_cx = rect.x + 16
-            self._draw_button_glyph(rect, icon, label_color, icon_cx)
+            self._draw_button_glyph(rect, icon, glyph_color, icon_cx)
         surf = self._text_surface(label, font_size, label_color)
         if surf:
             if icon:
@@ -101,9 +103,8 @@ class WidgetsMixin:
             pygame.draw.polygon(self.screen, color,
                                 [(cx + d * s, cy), (cx + d * s - d * 6, cy - 6), (cx + d * s - d * 6, cy + 6)])
         elif kind == 'undo':
-            # 回退：逆时针 3/4 圈弧形箭头，箭头在左侧，指向「后退」方向
-            self._draw_circular_arrow(cx, cy, 9, 180, 290, ccw=True, color=color,
-                                      width=3, ah=7)
+            # 撤销：左向箭头 + 顶部回弯弧（标准 ↶），比原圆环箭头更直观
+            self._draw_undo_glyph(cx, cy, color)
         elif kind == 'restart':
             pygame.draw.arc(self.screen, color, (cx - 9, cy - 9, 18, 18), 0.4, 5.6, 3)
             pygame.draw.polygon(self.screen, color,
@@ -124,9 +125,11 @@ class WidgetsMixin:
                 x2, y2 = cx + 10 * math.cos(ang), cy + 10 * math.sin(ang)
                 pygame.draw.line(self.screen, color, (x1, y1), (x2, y2), 2)
         elif kind == 'flip':
-            # 翻转棋盘：顺时针双箭头圆环（刷新/旋转意象），明确区别于「悔棋」单箭头
-            self._draw_circular_arrow(cx, cy, 9, 60, 300, ccw=False, color=color,
-                                      width=3, ah=7, double=True)
+            # 翻转棋盘：上下双向箭头（⇅），明确表达「上下调转 / 反转」语义
+            self._draw_flip_glyph(cx, cy, color)
+        elif kind.startswith('mode_'):
+            # 对战模式图标：kind 形如 mode_pvp / mode_pvm_red / mode_mvm
+            self._draw_mode_glyph(rect, kind[len('mode_'):], color, cx, cy)
         elif kind == 'check':
             # 勾选标记：表示当前选中的对战模式
             pygame.draw.line(self.screen, color, (cx - 7, cy), (cx - 1, cy + 7), 3)
@@ -186,6 +189,85 @@ class WidgetsMixin:
         end = phase + math.radians(300)
         pygame.draw.arc(self.screen, color,
                         (cx - r, cy - r, 2 * r, 2 * r), start, end, 3)
+
+    # ---- 自定义图标：人物 / 计算机 / 模式组合 ----
+    def _draw_person_glyph(self, cx, cy, color, s=1.0):
+        """简笔「玩家/人」图标：头 + 梯形肩身。"""
+        cx = int(cx)
+        cy = int(cy)
+        hr = int(4.0 * s)
+        pygame.draw.circle(self.screen, color, (cx, int(cy - 6.0 * s)), hr)
+        top = int(cy - 1.0 * s)
+        bot = int(cy + 9.0 * s)
+        wt = 3.0 * s
+        wb = 7.5 * s
+        pygame.draw.polygon(self.screen, color,
+                            [(int(cx - wt), top), (int(cx + wt), top),
+                             (int(cx + wb), bot), (int(cx - wb), bot)])
+
+    def _draw_computer_glyph(self, cx, cy, color, s=1.0):
+        """简笔「计算机/AI」图标：显示器 + 支架，屏内两横线表智能。"""
+        cx = int(cx)
+        cy = int(cy)
+        mw = int(15.0 * s)
+        mh = int(11.0 * s)
+        left = int(cx - 15.0 * s / 2)
+        top = int(cy - 8.0 * s)
+        pygame.draw.rect(self.screen, color, (left, top, mw, mh), 2, border_radius=2)
+        pygame.draw.line(self.screen, color, (int(cx - 5 * s), int(cy - 4 * s)),
+                         (int(cx + 5 * s), int(cy - 4 * s)), 2)
+        pygame.draw.line(self.screen, color, (int(cx - 5 * s), int(cy - 0.5 * s)),
+                         (int(cx + 4 * s), int(cy - 0.5 * s)), 2)
+        pygame.draw.line(self.screen, color, (cx, int(top + mh)), (cx, int(top + mh + 3 * s)), 2)
+        pygame.draw.line(self.screen, color, (int(cx - 5 * s), int(top + mh + 3 * s)),
+                         (int(cx + 5 * s), int(top + mh + 3 * s)), 2)
+
+    def _draw_mode_glyph(self, rect, mode, color, cx=None, cy=None):
+        """对战模式组合图标：双人对战=两人；人机=人+机；双机=两台计算机。"""
+        if cx is None:
+            cx = rect.centerx
+        if cy is None:
+            cy = rect.centery
+        sp, sc = 0.82, 0.95   # 计算机图标比人物略大，避免显得过小
+        if mode == 'pvp':
+            self._draw_person_glyph(cx - 7, cy, color, sp)
+            self._draw_person_glyph(cx + 7, cy, color, sp)
+        elif mode in ('pvm_red', 'pvm_black'):
+            self._draw_person_glyph(cx - 8, cy, color, sp)
+            self._draw_computer_glyph(cx + 8, cy, color, sc)
+        elif mode == 'mvm':
+            self._draw_computer_glyph(cx - 7, cy, color, sc)
+            self._draw_computer_glyph(cx + 7, cy, color, sc)
+
+    def _draw_undo_glyph(self, cx, cy, color, w=3):
+        """撤销图标：左向箭头 + 顶部回弯弧（标准 ↶）。"""
+        cx = int(cx)
+        cy = int(cy)
+        tipx, tipy = int(cx - 12), cy
+        r = 12
+        # 顶部弧：从右上方经顶点回到左上方
+        pygame.draw.arc(self.screen, color,
+                        (int(cx - r), int(cy - r), 2 * r, 2 * r),
+                        math.radians(-18), math.radians(198), w)
+        ex = int(cx + r * math.cos(math.radians(198)))
+        ey = int(cy + r * math.sin(math.radians(198)))
+        pygame.draw.line(self.screen, color, (ex, ey), (tipx, tipy), w)
+        a = 8
+        pygame.draw.polygon(self.screen, color,
+                            [(tipx, tipy), (int(tipx + a), int(tipy - a * 0.62)),
+                             (int(tipx + a), int(tipy + a * 0.62))])
+
+    def _draw_flip_glyph(self, cx, cy, color, w=3):
+        """反转棋盘图标：上下双向箭头（⇅），明确「翻转/对调」语义。"""
+        cx = int(cx)
+        cy = int(cy)
+        span = 13
+        a = 7
+        pygame.draw.line(self.screen, color, (cx, int(cy - 4)), (cx, int(cy + 4)), w)
+        pygame.draw.line(self.screen, color, (int(cx - a), int(cy - 4)), (cx, int(cy - span)), w)
+        pygame.draw.line(self.screen, color, (int(cx + a), int(cy - 4)), (cx, int(cy - span)), w)
+        pygame.draw.line(self.screen, color, (int(cx - a), int(cy + 4)), (cx, int(cy + span)), w)
+        pygame.draw.line(self.screen, color, (int(cx + a), int(cy + 4)), (cx, int(cy + span)), w)
 
 
     def _draw_card(self, rect, fill=(255, 255, 255)):

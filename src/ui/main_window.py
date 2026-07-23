@@ -34,6 +34,32 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         'mvm': '双机对战'
     }
 
+    # 模式元数据：下拉项标签 / 图标种类 / 主题辨识色（图标据此着色，保证可见度）
+    MODE_META = {
+        'pvp':       ('双人对战',   'mode_pvp',       (86, 196, 122)),
+        'pvm_red':   ('人机·红方', 'mode_pvm_red',   (224, 92, 92)),
+        'pvm_black': ('人机·黑方', 'mode_pvm_black', (158, 134, 214)),
+        'mvm':       ('双机对战',   'mode_mvm',       (96, 156, 236)),
+    }
+    # 顶部「模式」按钮上的简短标签（2 字，适配窄按钮宽度）
+    MODE_SHORT = {
+        'pvp': '双人',
+        'pvm_red': '人红',
+        'pvm_black': '人黑',
+        'mvm': '双机',
+    }
+
+    def mode_label(self, full=True):
+        """返回当前模式的显示名：full=True 用下拉项长名，否则用按钮短名。"""
+        return (self.MODE_META.get(self.game_mode, ('双人对战', '', (0, 0, 0)))[0]
+                if full else self.MODE_SHORT.get(self.game_mode, '双人'))
+
+    def mode_icon_kind(self):
+        return self.MODE_META.get(self.game_mode, ('', 'mode_pvp', (0, 0, 0)))[1]
+
+    def mode_color(self):
+        return self.MODE_META.get(self.game_mode, ('', '', (86, 196, 122)))[2]
+
     def __init__(self):
         pygame.init()
         
