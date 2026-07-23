@@ -39,6 +39,14 @@ class BoardInteractionMixin:
             return
         
 
+        # 支招（教练）状态下、且尚未选中棋子时点击棋盘：撤支教招的棋盘高亮
+        # （起点圆圈 / 箭头），保留底部候选列表以便重新选择；随后按正常选子流程，
+        # 让玩家可手动落子。否则会出现“点了棋子高亮仍不消失”的问题。
+        if getattr(self, 'ai_lines', None) and self.chess_info.select.x < 0:
+            self.chess_info.select = Pos(-1, -1)
+            self.chess_info.ret = []
+            self._clear_hint(keep_lines=True)
+
         # 点击已选中的同一颗棋子 -> 取消选中，并结束支招
         if self.chess_info.select.x == pos.x and self.chess_info.select.y == pos.y:
             self.chess_info.select = Pos(-1, -1)
