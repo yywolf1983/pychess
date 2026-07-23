@@ -577,11 +577,26 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                 real = (self.chess_info.piece, self.chess_info.select,
                         self.chess_info.ret, self.chess_info.suggest_moves,
                         self.chess_info.suggest_move_labels, self.chess_info.suggest,
-                        self.chess_info.suggest_track)
+                        self.chess_info.suggest_track,
+                        self.chess_info.pre_pos, self.chess_info.cur_pos,
+                        self.chess_info.is_checked)
                 if self.browse_index is not None and 0 <= self.browse_index < len(self.board_snapshots):
                     self.chess_info.piece = self.board_snapshots[self.browse_index]
                     self.chess_info.select = Pos(-1, -1)
                     self.chess_info.ret = []
+                    # 显示该步的“移动提示”：高亮 起点(from) 与 落点(to) 的边框
+                    # （复用 _draw_move_trail，依据 pre_pos / cur_pos 绘制起止格边框）
+                    nm = getattr(self, '_notation_moves', [])
+                    bi = self.browse_index
+                    if bi >= 1 and bi - 1 < len(nm):
+                        fx, fy, tx, ty = nm[bi - 1]
+                        self.chess_info.pre_pos = Pos(fx, fy)
+                        self.chess_info.cur_pos = Pos(tx, ty)
+                        self.chess_info.is_checked = False
+                    else:
+                        self.chess_info.pre_pos = Pos(-1, -1)
+                        self.chess_info.cur_pos = Pos(-1, -1)
+                        self.chess_info.is_checked = False
                     # 若当前查看的快照恰好是刚支招的局面，则保留支招箭头 / 候选标签
                     keep_hint = (self.hint_browse_index == self.browse_index)
                     if not keep_hint:
@@ -592,7 +607,9 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                 self.chess_view.draw()
                 (self.chess_info.piece, self.chess_info.select, self.chess_info.ret,
                  self.chess_info.suggest_moves, self.chess_info.suggest_move_labels,
-                 self.chess_info.suggest, self.chess_info.suggest_track) = real
+                 self.chess_info.suggest, self.chess_info.suggest_track,
+                 self.chess_info.pre_pos, self.chess_info.cur_pos,
+                 self.chess_info.is_checked) = real
                 self.draw_sidebar()
                 self._draw_eval_bottom()
                 self.draw_menu_bar()

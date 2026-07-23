@@ -147,8 +147,31 @@ class EditPanelMixin:
             self.game_mode = 'pvp'
             self.chess_info.status = 0
             self.chess_info.is_machine = False
+            # 若正处于棋谱浏览态，把「当前查看的局面」载入实时棋盘，
+            # 再从该局面开始摆棋（摆棋作用于实时 chess_info.piece，而非快照，
+            # 否则删除/移动棋子只改了 piece、面板却仍渲染快照，导致编辑“失效”）。
+            if getattr(self, 'browse_index', None) is not None:
+                bi = self.browse_index
+                snaps = getattr(self, 'board_snapshots', [])
+                if 0 <= bi < len(snaps):
+                    self.chess_info.piece = [row[:] for row in snaps[bi]]
+                self.browse_index = None
+            # 摆棋是从当前局面另起的自定义局：清掉棋谱加载态与历史，
+            # 避免编辑后保存 / 评分仍引用原棋谱的着法与快照。
+            self.notation_loaded = False
+            self._notation_moves = []
+            self._notation_snapshots = []
+            self.chess_info.move_history = []
+            self.chess_info.base_piece = [row[:] for row in self.chess_info.piece]
+            self.chess_info.base_red_go = self.chess_info.is_red_go
+            self.board_snapshots = [[row[:] for row in self.chess_info.piece]]
         else:
-            # 退出摆棋：重置后提示选择先手方
+            # 退出摆棋：自定义局面视为「新局」，清除棋谱加载状态，
+            # 使上一步/下一步置灰、悔棋可用（与未加载棋谱的普通对局一致）。
+            self.notation_loaded = False
+            self._notation_moves = []
+            self._notation_snapshots = []
+            # 重置后提示选择先手方
             self.chess_info.status = 0
             self._after_edit()
             self._reset_snapshots()

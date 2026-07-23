@@ -226,7 +226,7 @@ class SidebarMixin:
         if self.chess_info.is_checked:
             h += 40
         if self._result_info():
-            h += 48
+            h += 60
         h += 6 * 28               # 评分 / 步数 / 深度 / AI / 线程 / 行棋时间
         if self.toast and time.time() <= self.toast_until:
             # 按实际换行行数预留高度，避免提示文字被截断
@@ -258,8 +258,8 @@ class SidebarMixin:
         self._draw_text_left(f'{turn_side}行棋', chip.x + 30, chip.centery, 'small', (60, 66, 78))
         cy += 44
 
-        # 将军提示
-        if self.chess_info.is_checked:
+        # 将军提示（终局时的将死/困毙不再重复显示“将军”，避免二者同时出现）
+        if self.chess_info.is_checked and not self._result_info():
             self._draw_banner(card.x + 14, cy, card.width - 28, 30, (222, 64, 32), '将军！')
             cy += 40
 
@@ -267,8 +267,10 @@ class SidebarMixin:
         res = self._result_info()
         if res:
             text, color, sub = res
-            self._draw_banner(card.x + 14, cy, card.width - 28, 38, color, text, sub)
-            cy += 48
+            # 终局原因（将死/困毙/和棋）用获胜方颜色显示，不再用小灰字
+            self._draw_banner(card.x + 14, cy, card.width - 28, 50, color, text, sub,
+                              sub_color=color)
+            cy += 60
 
         # 信息行（标签左 / 数值右）
         total_moves = len(self.chess_info.move_history)
@@ -328,15 +330,18 @@ class SidebarMixin:
                                      'xsmall', (225, 235, 248))
             cy += box_h + 4
 
-    def _draw_banner(self, x, y, w, h, color, text, sub=None):
+    def _draw_banner(self, x, y, w, h, color, text, sub=None, sub_color=None):
         surf = pygame.Surface((w, h), pygame.SRCALPHA)
         pygame.draw.rect(surf, (*color, 46), surf.get_rect(), border_radius=8)
         self.screen.blit(surf, (x, y))
         pygame.draw.rect(self.screen, color, pygame.Rect(x, y, w, h), 1, border_radius=8)
-        self._draw_text(text, x + w // 2, y + (h // 2 - 9 if sub else h // 2),
-                        'small', color)
         if sub:
-            self._draw_text(sub, x + w // 2, y + h // 2 + 9, 'xsmall', (96, 106, 122))
+            # 主文本（如“红方胜”）与终局原因（如“将死”）均用获胜方颜色，
+            # 不再用小灰字；字号适当缩小（xsmall）确保两行能排版下。
+            self._draw_text(text, x + w // 2, y + 14, 'xsmall', color)
+            self._draw_text(sub, x + w // 2, y + h - 12, 'xsmall', sub_color or color)
+        else:
+            self._draw_text(text, x + w // 2, y + h // 2, 'xsmall', color)
 
     # ------------------------------------------------------------------
     # 棋谱列表（填充侧栏剩余空间，可点击跳转复盘 / 滚轮滚动）
