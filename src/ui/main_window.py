@@ -453,6 +453,11 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     if self.candidate_dragging and self.candidate_max_scroll > 0:
                         self._candidate_scroll_to_y(event.pos[1])
                 elif event.type == pygame.MOUSEBUTTONUP:
+                    if self.settings_drag_key is not None and self.show_settings:
+                        # 滑块拖拽结束：把新值立即同步给对局与引擎并持久化
+                        self._sync_settings()
+                        self.apply_settings_to_ai()
+                        self.settings.save()
                     self.settings_drag_key = None
                     self._edit_dragging = False
                     self.candidate_dragging = False

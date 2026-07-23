@@ -138,7 +138,7 @@ class SidebarMixin:
                 elif self.hint_loading:
                     base, hover = (70, 112, 86), (96, 196, 130)
                     text_color = (235, 248, 240)
-                    label = '支招中…(点击中断)'
+                    label = '支招中.'
                     icon = btn.get('icon')
                     active = True
                     spinner = True
@@ -621,6 +621,13 @@ class SidebarMixin:
                 break
 
 
+    def _apply_settings_now(self):
+        """任意设置变更后立即生效：同步给对局、下发给引擎，并持久化。"""
+        self._sync_settings()
+        self.apply_settings_to_ai()
+        self.settings.save()
+
+
     def handle_settings_click(self, x: int, y: int):
         if 'music_check' in self.settings_ui and self.settings_ui['music_check'].collidepoint(x, y):
             self.settings.is_music_play = not self.settings.is_music_play
@@ -645,12 +652,16 @@ class SidebarMixin:
         elif 'force_check' in self.settings_ui and self.settings_ui['force_check'].collidepoint(x, y):
             self.settings.force_variation = not self.settings.force_variation
         elif 'save' in self.settings_ui and self.settings_ui['save'].collidepoint(x, y):
-            self.settings.save()
-            self._sync_settings()
-            self.apply_settings_to_ai()
+            self._apply_settings_now()
             self.show_settings = False
+            return
         elif 'cancel' in self.settings_ui and self.settings_ui['cancel'].collidepoint(x, y):
             self.show_settings = False
+            return
+        else:
+            return
+        # 任意设置变更立即生效（无需点击“保存”）
+        self._apply_settings_now()
 
 
     def apply_settings_to_ai(self):

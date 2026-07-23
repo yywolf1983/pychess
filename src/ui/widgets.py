@@ -68,22 +68,28 @@ class WidgetsMixin:
             pygame.draw.rect(soft, (*glow_col, int(20 + 28 * p)), soft.get_rect(), border_radius=12)
             self.screen.blit(soft, (rect.x, rect.y))
             pygame.draw.rect(self.screen, (*glow_col, int(70 + 90 * p)), rect, width=2, border_radius=12)
-        if icon:
-            if icon_only:
-                # 仅图标按钮：图标居中偏上，下方附小号文字说明，保证可辨识
-                self._draw_button_glyph(rect, icon, glyph_color, rect.centerx, rect.centery - 12)
-                cap = self._text_surface(label, 'tiny', label_color)
-                if cap:
-                    self.screen.blit(cap, (rect.centerx - cap.get_width() // 2,
-                                           rect.bottom - cap.get_height() - 8))
-                return
-            icon_cx = rect.x + 16
-            self._draw_button_glyph(rect, icon, glyph_color, icon_cx)
+        if icon and icon_only:
+            # 仅图标按钮：图标居中偏上，下方附小号文字说明，保证可辨识
+            self._draw_button_glyph(rect, icon, glyph_color, rect.centerx, rect.centery - 12)
+            cap = self._text_surface(label, 'tiny', label_color)
+            if cap:
+                self.screen.blit(cap, (rect.centerx - cap.get_width() // 2,
+                                       rect.bottom - cap.get_height() - 8))
+            return
         surf = self._text_surface(label, font_size, label_color)
-        if surf:
-            if icon:
-                self.screen.blit(surf, (rect.x + 36, rect.centery - surf.get_height() // 2))
-            elif badge is not None:
+        if icon and not icon_only:
+            # 带图标按钮：图标与文字作为一个整体水平居中（如「支招」）
+            icon_w = 20
+            gap = 10
+            text_w = surf.get_width() if surf else 0
+            total = icon_w + gap + text_w
+            start_x = rect.centerx - total // 2
+            self._draw_button_glyph(rect, icon, glyph_color, start_x + icon_w // 2)
+            if surf:
+                self.screen.blit(surf, (start_x + icon_w + gap,
+                                        rect.centery - surf.get_height() // 2))
+        elif surf:
+            if badge is not None:
                 # 带模式色块按钮：文字靠左、右侧绘制当前模式色块，一眼可辨
                 self.screen.blit(surf, (rect.x + 16, rect.centery - surf.get_height() // 2))
                 chip = pygame.Rect(rect.right - 26, rect.centery - 8, 16, 16)
