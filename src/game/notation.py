@@ -69,13 +69,12 @@ def _source_label(piece_2d, pid: int, fx: int, fy: int, is_red: bool) -> str:
     n = len(ordered)
     if n == 2:
         return '前' if idx == 0 else '后'
-    if pid in (7, 14):  # 兵/卒 3+：前 + 中文数字序号（二/三…）
-        return '前' if idx == 0 else '二三四五六七八九'[idx - 1]
-    if idx == 0:
-        return '前'
-    if idx == n // 2:
-        return '中'
-    return '后'
+    if pid in (7, 14):  # 兵/卒：3 个用 前/中/后，4~5 个用 一/二/三/四/五
+        if n == 3:
+            return '前' if idx == 0 else ('中' if idx == 1 else '后')
+        return '一二三四五六七八九'[idx]
+    # 其它有战力的棋子（车马炮相士）每方最多两个，同列最多两个，只需 前/后
+    return '前' if idx == 0 else '后'
 
 
 def move_to_chinese(pid: int, fx: int, fy: int, tx: int, ty: int,
