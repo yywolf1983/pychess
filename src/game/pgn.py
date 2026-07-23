@@ -172,14 +172,17 @@ def moves_to_pgn_text(move_strs, headers=None, start_is_red=True):
     body = []
     n = 1
     i = 0
+    # 红先：先手=红（编号行 {#0,0#}），后手=黑（缩进行 {#50,0#}）
+    # 黑先：先手=黑（编号行 {#50,0#}），后手=红（缩进行 {#0,0#}）；与解析端红黑判定保持一致
+    first_anno, second_anno = ('{#0,0#}', '{#50,0#}') if start_is_red else ('{#50,0#}', '{#0,0#}')
     while i < len(move_strs):
-        red = move_strs[i]
-        # 红方走法独占一行：2 空格 + 序号 + 着法 + 评估注释（与七星聚会折行一致）
-        body.append(f'  {n}. {red} {{#0,0#}}')
+        first = move_strs[i]
+        # 先手方走法独占编号行
+        body.append(f'  {n}. {first} {first_anno}')
         if i + 1 < len(move_strs):
-            black = move_strs[i + 1]
-            # 黑方走法独占下一行，缩进 6 空格（七星聚会：'     卒５平６ {#50,0#}'）
-            body.append(f'      {black} {{#50,0#}}')
+            second = move_strs[i + 1]
+            # 后手方走法独占下一行，缩进 6 空格
+            body.append(f'      {second} {second_anno}')
         i += 2
         n += 1
     body.append('  *')

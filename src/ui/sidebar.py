@@ -341,8 +341,12 @@ class SidebarMixin:
             piece = [row[:] for row in self.board_snapshots[0]]
         else:
             piece = [row[:] for row in self.chess_info.piece]
-        for mv in self.chess_info.move_history:
+        # 由第一步棋子颜色推导整盘先手方：红子(8-14)=红先，黑子(1-7)=黑先
+        self._move_start_red = True
+        for k, mv in enumerate(self.chess_info.move_history):
             pid = piece[mv.from_pos.y][mv.from_pos.x]
+            if k == 0 and not (8 <= pid <= 14):
+                self._move_start_red = False
             try:
                 cn = move_to_chinese(pid, mv.from_pos.x, mv.from_pos.y,
                                      mv.to_pos.x, mv.to_pos.y, piece)
@@ -386,10 +390,18 @@ class SidebarMixin:
             ry = list_top + i * row_h - self._move_scroll
             if ry + row_h <= list_top or ry >= list_top + list_h:
                 continue
-            red_idx = 2 * i
-            black_idx = 2 * i + 1
-            red_str = self._move_strs[red_idx] if red_idx < total else None
-            black_str = self._move_strs[black_idx] if black_idx < total else None
+            first_idx = 2 * i
+            second_idx = 2 * i + 1
+            first_str = self._move_strs[first_idx] if first_idx < total else None
+            second_str = self._move_strs[second_idx] if second_idx < total else None
+            # 先手方放红列、后手方放黑列（红先：先手=红；黑先：先手=黑）
+            start_red = getattr(self, '_move_start_red', True)
+            if start_red:
+                red_idx, red_str = first_idx, first_str
+                black_idx, black_str = second_idx, second_str
+            else:
+                red_idx, red_str = second_idx, second_str
+                black_idx, black_str = first_idx, first_str
             # 行号
             self._draw_text_left(str(i + 1), cx, ry + row_h // 2, 'xsmall', (150, 160, 178))
             # 红方格

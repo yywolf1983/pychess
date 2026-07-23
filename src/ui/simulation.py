@@ -69,6 +69,8 @@ class SimulationMixin:
         self.sim_index = 0
         self.simulating = True
         self.sim_scroll = 0
+        # 记录 PV 首步行棋方（模拟起始局面的轮走方），用于推演面板红黑标签
+        self.sim_start_red = self.chess_info.is_red_go
         # 仅隐藏棋盘上的箭线条，保留 ai_lines 以便退出模拟后回到着法选择
         self._clear_hint(keep_lines=True)
         self.chess_info.select = Pos(-1, -1)
@@ -189,7 +191,8 @@ class SimulationMixin:
         last = min(len(pv_cn), int((self.sim_scroll + view_h) // row_h) + 1)
         for i in range(first, last):
             yy = list_top + i * row_h - self.sim_scroll
-            side = '（红）' if (i % 2 == 0) else '（黑）'
+            # 首步红则偶数行=红，首步黑则偶数行=黑（黑先 PV 不颠倒）
+            side = '（红）' if ((i % 2 == 0) == self.sim_start_red) else '（黑）'
             txt = f'{i+1:02d}. {pv_cn[i]}{side}'
             if i == self.sim_index:
                 hl = pygame.Surface((w - 16, row_h - 2), pygame.SRCALPHA)
@@ -197,7 +200,7 @@ class SimulationMixin:
                 self.screen.blit(hl, (8, yy))
                 self._draw_text_left(txt, 16, yy + row_h // 2, 'small', (255, 255, 255))
             else:
-                col = (255, 156, 146) if (i % 2 == 0) else (150, 214, 255)
+                col = (255, 156, 146) if ((i % 2 == 0) == self.sim_start_red) else (150, 214, 255)
                 self._draw_text_left(txt, 16, yy + row_h // 2, 'small', col)
 
         # 底部控制按钮
