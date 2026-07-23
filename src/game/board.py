@@ -290,10 +290,13 @@ class ChessInfo:
                 # 更新和棋相关计数（长将/长捉/未吃子回合/局面重复）
                 self._update_move_info(mover_is_red, captured, from_x, from_y, x, y, piece_id)
 
+                # 终局：胜方为刚完成走子的一方（is_red_go 当前指向「被将死/被困毙」方）
                 if is_checkmate(self.piece, self.is_red_go):
                     self.status = 2
+                    self.winner = 'red' if not self.is_red_go else 'black'
                 elif is_stalemate(self.piece, self.is_red_go):
                     self.status = 3
+                    self.winner = 'red' if not self.is_red_go else 'black'
                 else:
                     self._check_draw_conditions()
 

@@ -395,7 +395,7 @@ class HintEvalMixin:
             return '评估中…', (120, 132, 150)
         if abs(score) >= 10000:
             mate = score > 0
-            return ('将杀' if mate else '将杀'), ((200, 55, 55) if mate else (45, 52, 64))
+            return ('红方将杀' if mate else '黑方将杀'), ((200, 55, 55) if mate else (45, 52, 64))
         if score > 0:
             return f'{score}', (200, 55, 55)            # 红优：红色，不带正号
         if score < 0:

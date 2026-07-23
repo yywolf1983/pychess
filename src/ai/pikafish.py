@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import os
 import sys
@@ -11,6 +12,8 @@ from ..game.rule import (
     BLACK_KING, BLACK_ADVISOR, BLACK_ELEPHANT, BLACK_KNIGHT, BLACK_ROOK, BLACK_CANNON, BLACK_PAWN,
     RED_KING, RED_ADVISOR, RED_ELEPHANT, RED_KNIGHT, RED_ROOK, RED_CANNON, RED_PAWN
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _make_executable(engine_path: str):
@@ -279,7 +282,7 @@ class PikafishAI:
                         time.sleep(0.05)
                 
             except Exception as e:
-                print(f"PikafishAI初始化失败: {e}")
+                logger.exception("PikafishAI 初始化失败: %s", e)
                 self.close()
     
     def _send_command(self, command: str):
@@ -337,7 +340,7 @@ class PikafishAI:
         # 若引擎在搜索中崩溃(self.initialized 会被 _search_once 置 False)，
         # 清空缓存的（坏的）引擎路径，重新探测可用引擎并重试一次。
         if not self.initialized:
-            print('引擎搜索异常，尝试重新探测可用引擎...')
+            logger.warning('引擎搜索异常，尝试重新探测可用引擎...')
             self.close()
             PikafishAI._cached_engine_path = None
             self.initialize()
@@ -412,7 +415,7 @@ class PikafishAI:
             # 以“思考时间”为主控：深度按用户设置上限（depth）作为兜底，movetime 控制实际思考时长；
             # 当设置深度较高（如 120）时时间先到，引擎会思考满设定时长。
             go_cmd = f'go depth {depth} movetime {time_ms}'
-            print(f'[GO] {go_cmd}')
+            logger.debug('[GO] %s', go_cmd)
             self._send_command(go_cmd)
 
             best_move = None
@@ -434,7 +437,7 @@ class PikafishAI:
                         # 管道无数据：判断引擎进程是否已退出（崩溃）
                         if self.process is not None and self.process.poll() is not None:
                             engine_died = True
-                            print('引擎进程在搜索中退出（崩溃）')
+                            logger.error('引擎进程在搜索中退出（崩溃）')
                             break
                         time.sleep(0.01)
                         continue
@@ -492,7 +495,7 @@ class PikafishAI:
                         break
 
             except Exception as e:
-                print(f"读取AI响应失败: {e}")
+                logger.exception("读取 AI 响应失败: %s", e)
 
             finally:
                 if self.should_stop:
@@ -512,7 +515,7 @@ class PikafishAI:
                     best_move = random.choice(alternatives)
 
             if best_move:
-                print(f"Raw UCI: {best_move}")
+                logger.debug('Raw UCI: %s', best_move)
                 move = self._uci_to_move(best_move)
                 return MoveWithScore(move, score)
 
@@ -563,7 +566,7 @@ class PikafishAI:
             self._clear_tt()
             # 以“思考时间”为主控：深度按用户设置上限（depth）作为兜底，movetime 控制实际思考时长
             go_cmd = f'go depth {depth} movetime {time_ms}'
-            print(f'[GO] {go_cmd}')
+            logger.debug('[GO] %s', go_cmd)
             self._send_command(go_cmd)
 
             candidates = {}  # multipv -> (move_uci, score)
@@ -621,7 +624,7 @@ class PikafishAI:
                     elif line.startswith('bestmove'):
                         break
             except Exception as e:
-                print(f"读取多路着法失败: {e}")
+                logger.exception("读取多路着法失败: %s", e)
             finally:
                 if self.should_stop:
                     try:

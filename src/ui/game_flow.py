@@ -1,3 +1,4 @@
+import logging
 import os
 import pygame
 import threading
@@ -12,6 +13,8 @@ from ..game.rule import is_king_danger
 from ..game import pgn as pgn_lib
 from ..ai.pikafish import PikafishAI
 from .chess_view import ChessView
+
+logger = logging.getLogger(__name__)
 
 
 class GameFlowMixin:
@@ -51,7 +54,7 @@ class GameFlowMixin:
             self.eval_ai._send_command('isready')
             self.eval_ai.threads = t
         except Exception as e:
-            print('评估引擎线程调整失败:', e)
+            logger.error('评估引擎线程调整失败: %s', e)
 
 
     def reset_game(self):
@@ -83,7 +86,7 @@ class GameFlowMixin:
             self._warmup_engines()
 
         if self.game_mode == 'mvm':
-            print("Starting MVM mode, AI's turn")
+            logger.debug("Starting MVM mode, AI's turn")
             self.start_ai_turn()
         elif self.game_mode == 'pvm_black' and self.chess_info.is_red_go:
             # 人机(黑方)模式：AI 执红先行
@@ -187,7 +190,6 @@ class GameFlowMixin:
         for _ in range(undo_count):
             if self.eval_history:
                 self.eval_history.pop()
-        # 悔棋后回到实时对局（_reset_snapshots 会重建 board_snapshots），
         # 分步评分数组与实时快照不再对齐，清空后回退到 eval_history 曲线
         self.eval_by_step = []
         self.eval_step_gen += 1
@@ -196,7 +198,11 @@ class GameFlowMixin:
         self.chess_info.is_checked = is_king_danger(self.chess_info.piece, self.chess_info.is_red_go)
         # 悔棋后重新评估当前局面（保障每一步都有 AI 评分）
         self.request_eval(force=True)
-        self._reset_snapshots()
+        # 注意：上方已用 replay 重建 board_snapshots（与 move_history 对齐的逐步入点），
+        # 这里【不能】调用 _reset_snapshots()（它会丢弃这些快照、只留存最终局面），
+        # 否则 board_snapshots[0] 不再是基准起点，导致保存/记谱把回退后的局面当作起点
+        # 重放历史 → 记谱乱码与空步（「记谱缺失」）。仅退出浏览态即可。
+        self.browse_index = None
 
 
     def undo_edit(self):
@@ -332,7 +338,7 @@ class GameFlowMixin:
             root.destroy()
             return path or None
         except Exception as e:
-            print('文件对话框异常:', e)
+            logger.error('文件对话框异常: %s', e)
             try:
                 root.destroy()
             except Exception:
@@ -387,7 +393,7 @@ class GameFlowMixin:
             self.show_toast('已保存棋谱')
         except Exception as e:
             self.show_toast('保存失败')
-            print('保存失败:', e)
+            logger.error('保存失败: %s', e)
 
     def _save_game_auto(self):
         """无系统对话框时的回退：自动保存到默认目录，仅保留最近 20 个。"""
@@ -412,7 +418,7 @@ class GameFlowMixin:
             self.show_toast('已保存棋谱')
         except Exception as e:
             self.show_toast('保存失败')
-            print('保存失败:', e)
+            logger.error('保存失败: %s', e)
 
     def load_game(self):
         """打开系统文件管理器选择要加载的 PGN 棋谱；无系统对话框则回退到内置浏览器。"""
@@ -464,7 +470,7 @@ class GameFlowMixin:
             self.save_browser = {'entries': entries, 'rects': [], 'close_rect': None}
         except Exception as e:
             self.show_toast('读取棋谱失败')
-            print('读取棋谱失败:', e)
+            logger.error('读取棋谱失败: %s', e)
 
 
     def _apply_pgn_data(self, path):
@@ -475,7 +481,7 @@ class GameFlowMixin:
             self.load_pgn_into(text)
         except Exception as e:
             self.show_toast('加载失败')
-            print('加载棋谱失败:', e)
+            logger.error('加载棋谱失败: %s', e)
 
 
     def load_pgn_into(self, text):
@@ -613,7 +619,7 @@ class GameFlowMixin:
                 self.show_toast(f'已加载棋谱（{applied} 步.')
         except Exception as e:
             self.show_toast('加载失败')
-            print('加载棋谱失败:', e)
+            logger.error('加载棋谱失败: %s', e)
 
 
     def check_ai_turn(self):
@@ -645,20 +651,23 @@ class GameFlowMixin:
 
     def ai_move(self):
         try:
-            print(f"ai_move called. is_red_go={self.chess_info.is_red_go}, game_mode={self.game_mode}, player_color={self.player_color}")
+            logger.debug("ai_move called. is_red_go=%s, game_mode=%s, player_color=%s",
+                         self.chess_info.is_red_go, self.game_mode, self.player_color)
 
             move = self.ai.get_best_move(self.chess_info, self.settings)
-            print(f"AI returned move: from ({move.from_pos.x},{move.from_pos.y}) to ({move.to_pos.x},{move.to_pos.y}), valid={move.is_valid()}")
+            logger.debug("AI returned move: from (%s,%s) to (%s,%s), valid=%s",
+                         move.from_pos.x, move.from_pos.y, move.to_pos.x, move.to_pos.y, move.is_valid())
 
             if not move.is_valid():
                 # 引擎结果异常时回退到规则引擎，保证 AI 始终能走子
                 move = self._fallback_ai_move()
-                print(f"Fallback move: from ({move.from_pos.x},{move.from_pos.y}) to ({move.to_pos.x},{move.to_pos.y}), valid={move.is_valid()}")
+                logger.debug("Fallback move: from (%s,%s) to (%s,%s), valid=%s",
+                             move.from_pos.x, move.from_pos.y, move.to_pos.x, move.to_pos.y, move.is_valid())
 
             # 通过线程安全队列回传主循环，避免跨线程 post pygame 事件导致丢失
             self.ai_result_queue.put(move)
         except Exception as e:
-            print(f'AI移动失败: {e}')
+            logger.exception('AI 移动失败: %s', e)
             self.ai_result_queue.put(None)
 
 
@@ -691,23 +700,24 @@ class GameFlowMixin:
             # 清除上一步的支招提示
             self._clear_hint()
 
-        print(f"handle_ai_move called. from ({move.from_pos.x},{move.from_pos.y}) to ({move.to_pos.x},{move.to_pos.y})")
-        
+        logger.debug("handle_ai_move called. from (%s,%s) to (%s,%s)",
+                     move.from_pos.x, move.from_pos.y, move.to_pos.x, move.to_pos.y)
+
         piece_at_from = self.chess_info.get_piece_at(move.from_pos.x, move.from_pos.y)
-        print(f"Piece at from: {piece_at_from}, is_red_go: {self.chess_info.is_red_go}")
-        
+        logger.debug("Piece at from: %s, is_red_go: %s", piece_at_from, self.chess_info.is_red_go)
+
         is_valid = self.chess_info.is_valid_move(move.from_pos.x, move.from_pos.y, move.to_pos.x, move.to_pos.y)
-        print(f"is_valid_move: {is_valid}")
-        
+        logger.debug("is_valid_move: %s", is_valid)
+
         if is_valid:
             self.chess_info.select_piece(move.from_pos.x, move.from_pos.y)
             # 先恢复为“进行中”，让 move_piece 正常判定将死/困毙/和棋（含和棋检测）
             self.chess_info.status = 0
             self.chess_info.move_piece(move.to_pos.x, move.to_pos.y)
             self._record_snapshot()
-            print("Move executed successfully")
+            logger.debug("Move executed successfully")
         else:
-            print("Move is NOT valid!")
+            logger.warning("Move is NOT valid!")
         
         self.is_ai_thinking = False
         self.chess_info.is_machine = False

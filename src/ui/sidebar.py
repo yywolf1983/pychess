@@ -505,8 +505,8 @@ class SidebarMixin:
             'skill_level', 'skill',
             '注意：当前引擎不支持此选项，该设置暂不起作用', (206, 120, 64))
         time_minus_rect, time_plus_rect = draw_row(
-            row_top + 2 * row_step, '思考时间 (秒)', self.settings.thinking_time, 1, 60,
-            'thinking_time', 'time', '每步思考的最长时间，到达即停（先到先停）')
+            row_top + 2 * row_step, '思考时间 (秒)', self.settings.thinking_time, 1, 180,
+            'thinking_time', 'time', '每步思考的最长时间，到达即停（先到先停，最长 180 秒）')
         multi_minus_rect, multi_plus_rect = draw_row(
             row_top + 3 * row_step, 'MultiPV (变)', self.settings.multi_pv, 1, 12,
             'multi_pv', 'multi', '返回候选着法数，用于支招列表展示')

@@ -22,6 +22,12 @@ from .pos import Pos
 from .move import Move
 from .board import ChessInfo
 
+# 合法中文着法的首字集合：棋子名 + 同列区分前缀（前/后/中，含繁体「後」）
+# + 红方同列多子的中文数字前缀（一二三四五六七八九）。与 chinese_to_move 的
+# 接受集保持一致，避免解析时把「二炮进二」「后车平4」「中兵进1」等走法漏掉。
+_CN_NUM = '一二三四五六七八九'
+_MOVE_FIRST_CHARS = '将士象马车炮卒帅仕相兵' + '前後后中' + _CN_NUM
+
 
 # 与 Pikafish 引擎一致的 FEN 棋子映射（红方大写 / 黑方小写）
 _FEN_TO_PIECE = {
@@ -131,27 +137,34 @@ def parse_pgn(text):
             continue
         tok = _strip_annotations(tok)
         # 仅保留合法着法，过滤「感谢使用...」等尾部废文本。
-        # 着法首字为棋子名（将/士/象/车/炮/卒/帅/仕/相/兵）或以「前/后」区分的同列棋子。
-        if tok and (tok[0] in '将士象马车炮卒帅仕相兵前後'):
+        # 着法首字：棋子名 / 同列区分前缀（前/后/中，含繁体「後」）/ 红方同列多子的
+        # 中文数字前缀（一二三四五六七八九）。与 chinese_to_move 的接受集保持一致。
+        if tok and (tok[0] in _MOVE_FIRST_CHARS):
             moves.append(tok)
     return {'headers': headers, 'moves': moves}
 
 
 def moves_to_pgn_text(move_strs, headers=None, start_is_red=True):
-    """将中文着法串列表渲染为标准 PGN 文本。"""
-    """将中文着法串列表渲染为与 Android 版 ChineseChess 一致的 PGN 文本：
-    标签头（含 Game/Red/Black/Team/Result/ECCO/.../FEN）+ 开头块注释
-    {#1,1#} + 红黑分行走法（红带序号，黑缩进，各带评估注释）。
+    """将中文着法串列表渲染为与「七星聚会」棋谱一致的折行 PGN 文本：
+    标签头（Game/Event/Round/Date/Site/RedTeam/Red/BlackTeam/Black/Result/ECCO/
+    Opening/Variation，含 FEN 时附带 SetUp "1"）+ 开头块注释 {#1,1#} +
+    红黑各占一行（红：'  n. 着法 {#0,0#}'；黑：'      着法 {#50,0#}'，缩进 6 空格）。
     """
     headers = dict(headers or {})
     lines = []
+    # 标准表头顺序（与 Android 版 ChineseChess 的 toSaveContent 一致）
     for key in ('Game', 'Event', 'Round', 'Date', 'Site',
                 'RedTeam', 'Red', 'BlackTeam', 'Black',
-                'Result', 'ECCO', 'Opening', 'Variation', 'Mode'):
+                'Result', 'ECCO', 'Opening', 'Variation'):
         val = headers.get(key, '')
         lines.append(f'[{key} "{val}"]')
     if 'FEN' in headers:
+        lines.append('[SetUp "1"]')
         lines.append(f'[FEN "{headers["FEN"]}"]')
+    # Mode 为 pychess 扩展头（ChineseChess 忽略），置于末尾以兼容两方解析；
+    # 加载时据此恢复对局模式，务必保留。
+    if 'Mode' in headers:
+        lines.append(f'[Mode "{headers["Mode"]}"]')
     lines.append('')
     lines.append('{#1,1#}')
     lines.append('')
@@ -161,9 +174,11 @@ def moves_to_pgn_text(move_strs, headers=None, start_is_red=True):
     i = 0
     while i < len(move_strs):
         red = move_strs[i]
-        black = move_strs[i + 1] if i + 1 < len(move_strs) else None
+        # 红方走法独占一行：2 空格 + 序号 + 着法 + 评估注释（与七星聚会折行一致）
         body.append(f'  {n}. {red} {{#0,0#}}')
-        if black:
+        if i + 1 < len(move_strs):
+            black = move_strs[i + 1]
+            # 黑方走法独占下一行，缩进 6 空格（七星聚会：'     卒５平６ {#50,0#}'）
             body.append(f'      {black} {{#50,0#}}')
         i += 2
         n += 1

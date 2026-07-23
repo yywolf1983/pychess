@@ -2,10 +2,10 @@
   "is_music_play": true,
   "is_effect_play": true,
   "m_level": 3,
-  "depth": 120,
+  "depth": 40,
   "skill_level": 20,
   "multi_pv": 1,
   "contempt": 20,
   "force_variation": false,
-  "thinking_time": 1
+  "thinking_time": 180
 }
