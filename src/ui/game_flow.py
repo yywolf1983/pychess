@@ -64,7 +64,6 @@ class GameFlowMixin:
         self.eval_ai.close()
         self.is_ai_thinking = False
         self.hint_loading = False
-        self.draw_loading = False
         self.toast = None
         self.eval_score = None
         self.eval_history = []
@@ -725,6 +724,7 @@ class GameFlowMixin:
             # 终局结果改在对局状态卡片的终局横幅中展示，不再弹出浮窗提示
             res_text = self._result_info()[0] if self._result_info() else ''
             _ = res_text
-        elif self.game_mode == 'mvm':
+        elif self.game_mode == 'mvm' and not self.chess_info.draw_offer_pending:
+            # 和棋条件触发时先暂停，由主循环弹窗询问“是否和棋”，待用户决定后续
             self.start_ai_turn()
 

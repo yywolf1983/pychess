@@ -72,12 +72,12 @@ python main.py
 | `is_music_play` | 是否播放背景音乐 | `true` |
 | `is_effect_play` | 是否播放落子音效 | `true` |
 | `m_level` | 界面难度档位 | `3` |
-| `depth` | 引擎搜索深度 | `40` |
+| `depth` | 引擎搜索深度 | `10` |
 | `skill_level` | 引擎强度（0–20，越高越强） | `20` |
 | `multi_pv` | 支招候选着法数 | `1` |
 | `contempt` | 局势倾向（正值偏进攻） | `20` |
 | `force_variation` | 是否强制输出变化线 | `true` |
-| `thinking_time` | 单步思考时限（秒） | `1` |
+| `thinking_time` | 单步思考时限（秒） | `3` |
 
 ## 测试
 

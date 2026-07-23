@@ -132,9 +132,6 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.settings_sliders = []
         self.settings_drag_key = None
         self.modal = None
-        self.draw_response_queue = queue.Queue()
-        self._draw_no_result = object()
-        self.draw_loading = False
         self.toast = None
         self.toast_until = 0
         # 实时评分（红方视角，单位 centipawn：正=红优 / 负=黑优）
@@ -301,11 +298,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     self.mode_menu_open = False
                     return
             # 点中模式按钮本身则仅关闭；点别处也关闭
-            mode_btn = next(b['rect'] for b in self.menu_buttons if b['key'] == 'mode')
-            if mode_btn.collidepoint(x, y):
-                self.mode_menu_open = False
-            else:
-                self.mode_menu_open = False
+            self.mode_menu_open = False
             return
 
         if y < self.menu_h:
@@ -411,7 +404,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                         max_scroll = max(0, self.edit_content_bottom - self.edit_vp.bottom)
                         thumb = self._edit_scrollbar_rect(self.edit_vp, max_scroll)
                         if thumb and max_scroll > 0:
-                            ty = y - self._edit_drag_offset
+                            ty = event.pos[1] - self._edit_drag_offset
                             ratio = (ty - self.edit_vp.y) / (self.edit_vp.height - thumb.height)
                             self.edit_scroll = max(0, min(max_scroll, int(ratio * max_scroll)))
                     # 候选列表滚动条拖拽
@@ -504,38 +497,18 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             # 消费支招结果
             self._consume_hint_result()
 
-            # 消费和棋应答结果
-            try:
-                draw_resp = self.draw_response_queue.get_nowait()
-            except queue.Empty:
-                draw_resp = self._draw_no_result
-
-            if draw_resp is not self._draw_no_result:
-                self.draw_loading = False
-                if draw_resp:
-                    self.chess_info.accept_draw()
-                else:
-                    # 拒绝后抑制重复询问，直到和棋条件真正改变
-                    self.chess_info.draw_offer_suppressed = True
-                    self._show_modal('draw_response', '电脑拒绝和棋',
-                                     '电脑认为局势占优，拒绝和棋。',
-                                     [{'id': 'ok', 'label': '继续对局'}])
-
-            # 规则触发的和棋提示：有人类参与时弹窗询问“是否和棋”；仅双机对战交给电脑判定
+            # 规则触发的和棋提示：所有模式统一弹窗询问“是否和棋”
             if (self.chess_info.draw_offer_pending and not self.modal
-                    and not self.draw_loading and not self.is_ai_thinking):
+                    and not self.is_ai_thinking):
                 reason = self.chess_info.draw_offer_pending
                 self.chess_info.draw_offer_pending = None
-                if self.game_mode == 'mvm':
-                    self.query_ai_rule_draw()
-                else:
-                    self._show_modal('draw_rule', '和棋', reason,
-                                     [{'id': 'yes', 'label': '同意和棋'},
-                                      {'id': 'no', 'label': '继续对局'}])
+                self._show_modal('draw_rule', '和棋', reason,
+                                 [{'id': 'yes', 'label': '同意和棋'},
+                                  {'id': 'no', 'label': '继续对局'}])
 
             # 强制变着提示（重复局面 / 长将 / 长捉）：以提示条呈现
             if (self.chess_info.draw_hint and not self.modal
-                    and not self.is_ai_thinking and not self.draw_loading):
+                    and not self.is_ai_thinking):
                 self.show_toast(self.chess_info.draw_hint)
                 self.chess_info.draw_hint = ''
 

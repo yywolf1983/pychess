@@ -75,8 +75,9 @@ class DialogsMixin:
             else:
                 # 拒绝后抑制重复弹窗，直到和棋条件真正改变
                 self.chess_info.draw_offer_suppressed = True
-            self.modal = None
-        elif kind == 'draw_response':
+                # 双机对战：玩家选择“继续对局”后恢复 AI 自动行棋
+                if self.game_mode == 'mvm' and self.chess_info.get_game_status() == 'playing':
+                    self.start_ai_turn()
             self.modal = None
         elif kind == 'edit_first_move':
             # 摆棋完成后选择先手方

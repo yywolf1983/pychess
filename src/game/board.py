@@ -111,6 +111,8 @@ class ChessInfo:
         self.base_red_go = self.is_red_go
         # 支招「跟线」模式：玩家按推荐线行棋时持续提示剩余着法
         self.suggest_track = False
+        # 记录开局局面，使三照重复判定从首局面开始计数（否则漏计开局态）
+        self._record_position()
 
     def _create_initial_board(self) -> List[List[int]]:
         board = [[0] * 9 for _ in range(10)]
@@ -192,6 +194,8 @@ class ChessInfo:
         self.base_piece = [row[:] for row in self.piece]
         self.base_red_go = self.is_red_go
         self.suggest_track = False
+        # 记录开局局面，使三照重复判定从首局面开始计数（否则漏计开局态）
+        self._record_position()
 
     def restore_base(self):
         """将棋盘恢复到本局基准局面（标准开局或摆棋自定义局面），
@@ -230,6 +234,8 @@ class ChessInfo:
         self.attack_num_r = 0
         self.attack_num_b = 0
         self.winner = None
+        # 记录被重置到的基准局面，使三照重复判定从该局面开始计数
+        self._record_position()
 
     def get_piece_at(self, x: int, y: int) -> int:
         if 0 <= x < 9 and 0 <= y < 10:
@@ -578,8 +584,6 @@ class ChessInfo:
     def get_game_status(self) -> str:
         if self.status == 0:
             return "playing"
-        elif self.status == 1:
-            return "thinking"
         elif self.status == 2:
             return "checkmate"
         elif self.status == 3:

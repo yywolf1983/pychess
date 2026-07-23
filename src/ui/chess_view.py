@@ -224,7 +224,6 @@ class ChessView:
         self._draw_possible_moves()
         self._draw_move_trail()
         self._draw_suggestions()
-        self._draw_thinking()
     
     def _gx(self, x):
         """第 x 条竖线（0..8）在缩放后棋盘上的 x 像素（基于图片实测网格线线性插值）。"""
@@ -281,25 +280,26 @@ class ChessView:
                 return fp
         return None
 
+    def _make_coord_font(self, bold):
+        path = self._resolve_coord_font()
+        size = max(13, int(24 * self.scale))
+        try:
+            f = (pygame.font.Font(path, size)
+                 if path else pygame.font.SysFont(None, size))
+            f.set_bold(bool(bold))
+        except Exception:
+            f = pygame.font.SysFont(None, size)
+            f.set_bold(bool(bold))
+        return f
+
     def _coord_font(self):
         if getattr(self, '_cjk_font', None) is None:
-            path = self._resolve_coord_font()
-            size = max(13, int(24 * self.scale))
-            try:
-                self._cjk_font = (pygame.font.Font(path, size)
-                                  if path else pygame.font.SysFont(None, size))
-            except Exception:
-                self._cjk_font = pygame.font.SysFont(None, size)
+            self._cjk_font = self._make_coord_font(False)
         return self._cjk_font
 
     def _coord_font_bold(self):
         if getattr(self, '_cjk_font_bold', None) is None:
-            font = self._coord_font()
-            try:
-                font.set_bold(True)        # 黑方数字加粗
-            except Exception:
-                pass
-            self._cjk_font_bold = font
+            self._cjk_font_bold = self._make_coord_font(True)   # 黑方数字加粗
         return self._cjk_font_bold
 
     def _draw_coord_text(self, text, cx, cy, color, bold=False):
@@ -576,9 +576,6 @@ class ChessView:
                 line_end_y = from_y + uy * e
                 pygame.draw.line(self.screen, color, (line_start_x, line_start_y), (line_end_x, line_end_y), width)
             pos += period
-    
-    def _draw_thinking(self):
-        pass
     
     def get_board_coordinates(self, screen_x: int, screen_y: int) -> Pos:
         screen_x = int(screen_x)

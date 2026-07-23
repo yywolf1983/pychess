@@ -6,6 +6,6 @@
   "skill_level": 20,
   "multi_pv": 1,
   "contempt": 20,
-  "force_variation": true,
+  "force_variation": false,
   "thinking_time": 1
 }

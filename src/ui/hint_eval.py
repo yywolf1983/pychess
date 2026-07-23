@@ -272,37 +272,6 @@ class HintEvalMixin:
         self.hint_selected = -1
 
 
-    def query_ai_rule_draw(self):
-        """规则触发和棋提示（人机模式）：后台询问电脑是否接受和棋。
-
-        电脑不占优（ <= 阈值）则接受，否则拒绝。
-        """
-        if not self.eval_ai.is_initialized():
-            self.eval_ai.initialize()
-        self.draw_loading = True
-        t = threading.Thread(target=self._compute_rule_draw)
-        t.daemon = True
-        t.start()
-
-
-    def _compute_rule_draw(self):
-        try:
-            settings = Setting()
-            settings.depth = self.settings.depth
-            settings.skill_level = self.settings.skill_level
-            settings.thinking_time = min(1.0, self.settings.thinking_time)
-            settings.multi_pv = 1
-            settings.contempt = self.settings.contempt
-            settings.force_variation = False
-            result = self.eval_ai.get_best_move_with_score(self.chess_info, settings)
-            # score 为正表示行棋方（电脑）占优
-            accept = result is not None and result.score <= 30
-            self.draw_response_queue.put(accept)
-        except Exception as e:
-            print('和棋判定失败:', e)
-            self.draw_response_queue.put(False)
-
-
     def request_eval(self, force=False):
         """后台评估当前局面评分（红方视角），并更新评分曲线。"""
         if not force and (self.eval_loading or self.is_ai_thinking):
