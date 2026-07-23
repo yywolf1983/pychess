@@ -215,6 +215,28 @@ class WidgetsMixin:
             self._draw_checkmark(rect, (255, 255, 255))
 
 
+    def _draw_toggle_pill(self, rect, checked):
+        """胶囊形开关：未选浅灰、选中绿色，圆形滑块由左滑到右，带阴影。"""
+        h = rect.height
+        r = h // 2
+        surf = pygame.Surface((rect.width, h), pygame.SRCALPHA)
+        col = (96, 196, 130) if checked else (208, 214, 224)
+        pygame.draw.rect(surf, col, surf.get_rect(), border_radius=r)
+        self.screen.blit(surf, (rect.x, rect.y))
+        knob_r = r - 3
+        cx_knob = (rect.right - r) if checked else (rect.x + r)
+        cy_knob = rect.y + r
+        # 滑块阴影
+        shadow = pygame.Surface((knob_r * 2 + 2, knob_r * 2 + 2), pygame.SRCALPHA)
+        pygame.draw.circle(shadow, (0, 0, 0, 55), (knob_r + 1, knob_r + 1), knob_r)
+        self.screen.blit(shadow, (cx_knob - knob_r, cy_knob - knob_r + 2))
+        # 滑块主体
+        pygame.draw.circle(self.screen, (255, 255, 255), (cx_knob, cy_knob), knob_r)
+        if checked:
+            pygame.draw.circle(self.screen, (96, 196, 130), (cx_knob, cy_knob),
+                               max(2, knob_r - 4))
+
+
     def _draw_rounded_card(self, rect, top, bottom, border, radius=14):
         """暗色圆角卡片 + 垂直渐变（参照 Android ScoreCurveView 卡片）。"""
         surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)

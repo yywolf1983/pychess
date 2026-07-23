@@ -19,12 +19,15 @@ class GameFlowMixin:
         self.game_mode = mode
         
         self.is_ai_thinking = False
-        self.ai.close()
-        self.eval_ai.close()
-
-        if self.game_mode != 'pvp':
-            self.ai.initialize()
-            self._init_eval_engine()
+        if self.game_mode == 'pvp':
+            # 双人模式无需行棋引擎，但保留评估引擎以实时评分
+            self.ai.close()
+        else:
+            # 非 pvp：保留已预热进程（不关闭），后台确保行棋与评估两个引擎均已完成
+            # 「进程启动 + NNUE 权重加载」。这样玩家第一步落子时引擎已就绪，无需再
+            # 加载 NNUE，主线程 UI 不被冷启动的 IO/内存带宽占用拖慢，避免「第一步
+            # 落子卡顿、之后正常」的现象。
+            self._warmup_engines()
         
         if self.game_mode == 'mvm':
             if self.chess_info.get_game_status() == 'playing':
@@ -76,9 +79,9 @@ class GameFlowMixin:
         self._reset_snapshots()
 
         if self.game_mode != 'pvp':
-            self.ai.initialize()
-            self._init_eval_engine()
-            print(f"AI initialized: {self.ai.is_initialized()}")
+            # 后台完整预初始化引擎（进程启动 + NNUE 加载），避免新局首步
+            # 落子时主线程被引擎冷启动拖慢。
+            self._warmup_engines()
 
         if self.game_mode == 'mvm':
             print("Starting MVM mode, AI's turn")
@@ -89,6 +92,30 @@ class GameFlowMixin:
 
         # 初始局面评估（必要时惰性初始化引擎），让评分曲线从开局即有数据
         self.request_eval()
+
+
+    def _warmup_engines(self):
+        """后台完整预初始化行棋引擎与评估引擎（启动进程 + 加载 NNUE 权重）。
+
+        关键优化：把「引擎冷启动 + NNUE 权重加载」这一最耗时、且会引发 IO/内存
+        带宽竞争的环节，从「玩家第一步落子后」提前到「切换模式/新局时」在后台完成。
+        玩家落子触发 AI 思考时引擎已就绪，无需再加载 NNUE，主线程 UI 不被拖慢，
+        避免「第一步落子卡顿、之后正常」的现象。
+        """
+        if getattr(self, '_warming_engines', False):
+            return
+        self._warming_engines = True
+
+        def _init_both():
+            try:
+                self.ai.initialize()
+                self.eval_ai.initialize()
+            except Exception:
+                pass
+            finally:
+                self._warming_engines = False
+
+        threading.Thread(target=_init_both, daemon=True).start()
 
 
     def undo_move(self):
@@ -189,7 +216,7 @@ class GameFlowMixin:
         elif op['type'] == 'move':
             fx, fy = op['from']
             tx, ty = op['to']
-            self.chess_info.piece[ty][tx] = 0
+            self.chess_info.piece[ty][tx] = op.get('captured', 0)
             self.chess_info.piece[fy][fx] = op['pid']
         elif op['type'] == 'clear':
             self.chess_info.piece = [row[:] for row in op['prev']]
@@ -584,7 +611,7 @@ class GameFlowMixin:
             if applied == 0:
                 self.show_toast('已加载棋谱（仅局面，无着法）')
             else:
-                self.show_toast(f'已加载棋谱（{applied} 步，可点「下一步」复盘）')
+                self.show_toast(f'已加载棋谱（{applied} 步.')
         except Exception as e:
             self.show_toast('加载失败')
             print('加载棋谱失败:', e)

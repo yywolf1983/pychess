@@ -73,6 +73,9 @@ class SimulationMixin:
         self._clear_hint(keep_lines=True)
         self.chess_info.select = Pos(-1, -1)
         self.chess_info.ret = []
+        # 清除进入模拟前的真实着法提示线（上一步轨迹），避免其残留在棋盘上
+        self.chess_info.pre_pos = Pos(-1, -1)
+        self.chess_info.cur_pos = Pos(-1, -1)
 
 
     def _sim_apply_move(self, mv):
@@ -86,13 +89,20 @@ class SimulationMixin:
         ci.is_checked = is_king_danger(ci.piece, ci.is_red_go)
         ci.select = Pos(-1, -1)
         ci.ret = []
-        ci.pre_pos = mv.from_pos
-        ci.cur_pos = mv.to_pos
 
 
     def _rebuild_sim(self):
         """从保存副本重建当前局面，并应用前 sim_index 步。"""
         self._copy_chess_state(self.chess_info, self.sim_restore)
+        # 模拟期间一律不显示着法轨迹线与支招箭头线
+        # （sim_restore 克隆于进入模拟前，可能仍携带真实着法的轨迹与支招推荐线）
+        self.chess_info.pre_pos = Pos(-1, -1)
+        self.chess_info.cur_pos = Pos(-1, -1)
+        self.chess_info.suggest_moves = []
+        self.chess_info.suggest_move_labels = []
+        self.chess_info.suggest_replies = []
+        self.chess_info.suggest = None
+        self.chess_info.suggest_track = False
         for k in range(self.sim_index):
             self._sim_apply_move(self.sim_pv[k])
 
@@ -101,12 +111,14 @@ class SimulationMixin:
         if self.simulating and self.sim_index < len(self.sim_pv):
             self.sim_index += 1
             self._rebuild_sim()
+            self.request_eval(force=True)
 
 
     def sim_step_back(self):
         if self.simulating and self.sim_index > 0:
             self.sim_index -= 1
             self._rebuild_sim()
+            self.request_eval(force=True)
 
 
     def end_simulation(self):
@@ -119,6 +131,9 @@ class SimulationMixin:
         self.sim_restore = None
         self.sim_ui = {}
         self.sim_scroll = 0
+        # 退出模拟后重新评估真实局面（仅刷新显示，不写入曲线）
+        self.eval_skip_append = True
+        self.request_eval(force=True)
         # 恢复后让 AI 在轮到它时继续（如适用）
         if self.chess_info.get_game_status() == 'playing':
             self.check_ai_turn()

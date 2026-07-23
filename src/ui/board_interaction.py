@@ -50,7 +50,6 @@ class BoardInteractionMixin:
             from_pos = Pos(self.chess_info.select.x, self.chess_info.select.y)
             if self.chess_info.move_piece(pos.x, pos.y):
                 # 落子后：若与支招推荐线一致则续显提示线条，否则结束提示
-                self.request_eval()
                 self._record_snapshot()
                 if not self._update_hint_after_move(from_pos, pos):
                     self._clear_hint()
@@ -59,6 +58,10 @@ class BoardInteractionMixin:
                     self.ai_lines = []
                 self.hint_window = None
                 self.check_ai_turn()
+                # 放在 check_ai_turn 之后：AI 思考期间 request_eval 内部守卫会跳过，
+                # 待 AI 落子(handle_ai_move)后再评估，避免行棋与评估两个引擎同时冷
+                # 启动、抢占 CPU 导致落子卡顿；pvp 模式仍会正常触发评估。
+                self.request_eval()
                 status = self.chess_info.get_game_status()
                 if status != 'playing':
                     # 终局结果改在对局状态卡片的终局横幅中展示，不再弹出浮窗提示
@@ -129,6 +132,7 @@ class BoardInteractionMixin:
         self.hint_selected = -1
         self.hint_ui = []
         self.hint_window = None
+        self.hint_browse_index = -1
         if not keep_lines:
             self.ai_lines = []
 

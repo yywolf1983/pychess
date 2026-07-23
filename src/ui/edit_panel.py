@@ -16,7 +16,7 @@ from .chess_view import ChessView
 
 class EditPanelMixin:
     def _handle_edit_click(self, x: int, y: int):
-        """编辑态下点击棋盘：放置 / 拾起移动 / 双击删除。"""
+        """编辑态下点击棋盘：棋子→再点目标格移动；双击删除；调色板选中后点棋盘放置。"""
         pos = self.chess_view.get_board_coordinates(x, y - self.board_offset_y)
         if pos.x < 0:
             return
@@ -24,46 +24,73 @@ class EditPanelMixin:
         cell = (pos.x, pos.y)
         cur = self.chess_info.piece[pos.y][pos.x]
 
-        # 双击删除：上一次同格快速点击且当时是“拾起”，则丢弃拾起的棋子（即删除）
+        # 双击删除：同一格短时间内的第二次点击且该格有棋子 → 删除
         if (self._edit_last_click and self._edit_last_click[0] == cell
-                and now - self._edit_last_click[1] < 300 and self._edit_last_click[2] == 'pickup'):
-            pid = self.edit_piece
-            self.edit_piece = None
-            self._edit_pickup_cell = None
+                and now - self._edit_last_click[1] < 300 and cur != 0):
+            self.edit_history.append({'type': 'delete', 'pos': cell, 'pid': cur})
+            self.chess_info.piece[pos.y][pos.x] = 0
+            self.chess_info.select = Pos(-1, -1)
             self._edit_last_click = None
-            # 记录删除操作，便于悔棋还原
-            self.edit_history.append({'type': 'delete', 'pos': cell, 'pid': pid})
-            self._after_edit()
+            self.edit_drag_pid = None
+            self.edit_drag_pos = None
+            self.edit_drag_moved = False
+            self._edit_drag_from = None
+            self.edit_move_from = None
+            self._after_edit()  # 删除会改变局面，复位状态
             return
 
+        # 已选中一个待移动的棋盘棋子：点空格完成移动；点另一棋子改选；点源格取消
+        if self.edit_move_from is not None:
+            fx, fy = self.edit_move_from
+            if (fx, fy) == cell:
+                self.edit_move_from = None
+                self.chess_info.select = Pos(-1, -1)
+                self._edit_last_click = (cell, now, 'select')
+                return
+            if cur != 0:
+                # 点中其它棋子：改选该子（不直接覆盖移动，保证双击删除可用）
+                self.edit_move_from = (pos.x, pos.y)
+                self.chess_info.select = Pos(pos.x, pos.y)
+                self._edit_last_click = (cell, now, 'select')
+                return
+            # 空格：移动源棋子到此处（captured 为 0）
+            pid = self.chess_info.piece[fy][fx]
+            self.chess_info.piece[pos.y][pos.x] = pid
+            self.chess_info.piece[fy][fx] = 0
+            self.edit_history.append({
+                'type': 'move', 'from': (fx, fy),
+                'to': (pos.x, pos.y), 'pid': pid, 'captured': 0})
+            self.edit_move_from = None
+            self.chess_info.select = Pos(-1, -1)
+            self._after_edit()
+            self._edit_last_click = (cell, now, 'move')
+            return
+
+        # 调色板选中的棋子：点击棋盘放置（保持原逻辑）
         if self.edit_piece is not None:
-            # 放置选中的棋子（上限校验，避免多出棋子）
             if self._piece_count(self.edit_piece) >= self._piece_max_count(self.edit_piece):
+                self.edit_move_from = None
                 return
             pid = self.edit_piece
-            # 区分“从棋盘拾起后移动”与“从调色板放置”：记录不同撤销项
-            if self._edit_pickup_cell is not None and self._edit_pickup_cell != cell:
-                self.edit_history.append({'type': 'move', 'from': self._edit_pickup_cell,
-                                          'to': cell, 'pid': pid})
-            elif self._edit_pickup_cell is None:
-                self.edit_history.append({'type': 'place', 'pos': cell, 'pid': pid})
-            # 同格放回（_edit_pickup_cell == cell）属无操作移动，不记录撤销
             self.chess_info.piece[pos.y][pos.x] = pid
-            self._edit_pickup_cell = None
-            self._edit_last_click = (cell, now, 'place')
+            self.edit_history.append({'type': 'place', 'pos': cell, 'pid': pid})
+            self.chess_info.select = Pos(-1, -1)
             self._after_edit()
             self.edit_piece = None  # 放置后取消选中（只选择一次，避免持续选中）
+            self.edit_move_from = None
             return
 
-        # 未选中棋子：点击已有棋子则拾起（移动）；记录原格子
+        # 单击棋盘上的棋子：选中为待移动（高亮，不移除）；再点目标格完成移动
         if cur != 0:
-            self.edit_piece = cur
-            self._edit_pickup_cell = cell
-            self.chess_info.piece[pos.y][pos.x] = 0
-            self._edit_last_click = (cell, now, 'pickup')
-            self._after_edit()
+            self.edit_move_from = (pos.x, pos.y)
+            self.chess_info.select = Pos(pos.x, pos.y)
+            self.edit_piece = None
+            self._edit_last_click = (cell, now, 'select')
             return
-        # 空格且无选中：忽略
+
+        # 空格：清除选中
+        self.edit_move_from = None
+        self.chess_info.select = Pos(-1, -1)
         self._edit_last_click = (cell, now, 'empty')
 
 
@@ -105,8 +132,11 @@ class EditPanelMixin:
         self._edit_dragging = False
         self.edit_drag_pid = None
         self.edit_drag_pos = None
+        self.edit_drag_moved = False
+        self._edit_drag_from = None
         self.edit_drag_start = None
         self.edit_drag_moved = False
+        self.edit_move_from = None
         self._edit_last_click = None
         self.chess_info.select = Pos(-1, -1)
         self.chess_info.ret = []
@@ -153,6 +183,8 @@ class EditPanelMixin:
         self.eval_by_step = []
         self.eval_score = None
         self.eval_gen += 1
+        # 摆棋导致棋盘变动：实时评估当前局面（任何模式都评分）
+        self.request_eval()
         self.eval_step_gen += 1
 
 
@@ -223,9 +255,8 @@ class EditPanelMixin:
 
         self.edit_ui = {}
 
-        def draw_color_rows(palette, label, y0):
-            self._draw_text_left(label, inner_x, y0, 'small', (170, 188, 210))
-            yy = y0 + 8
+        def draw_color_rows(palette, y0):
+            yy = y0
             for i, (pid, name) in enumerate(palette):
                 r, c = divmod(i, cols)
                 x = inner_x + c * (cw + gap)
@@ -265,8 +296,8 @@ class EditPanelMixin:
             rows = (len(palette) + cols - 1) // cols
             return yy + rows * (ch + gap)
 
-        y = draw_color_rows(black_palette, '黑方', vp_top + 32)
-        y = draw_color_rows(red_palette, '红方', y + 6)
+        y = draw_color_rows(black_palette, vp_top + 32)
+        y = draw_color_rows(red_palette, y + 6)
 
         # 清空棋盘（无橡皮擦按钮：删除棋子改用“双击棋盘棋子”）
         base_y = y + 6
@@ -280,38 +311,9 @@ class EditPanelMixin:
 
         hint_y = clear_rect.bottom + 16
         self.edit_ui['hint'] = pygame.Rect(inner_x, hint_y, inner_w, 20)
-        if hint_y - self.edit_scroll <= vp_bottom and hint_y - self.edit_scroll >= vp_top - 20:
-            self._draw_text_left('点击/拖拽棋子到棋盘放置；双击棋盘棋子删除',
-                                 inner_x, hint_y - self.edit_scroll, 'small', (170, 188, 210))
-
-        # FEN 区域：根据当前摆棋局面重建并显示（可一键复制）
-        fen_y = hint_y + 26
-        self.edit_ui['fen_label'] = pygame.Rect(inner_x, fen_y, inner_w, 18)
-        self._draw_text_left('当前局面 FEN', inner_x, fen_y - self.edit_scroll, 'small', (170, 188, 210))
-
-        fen_box_y = fen_y + 22
-        fen_box_h = 56
-        self.edit_ui['fen'] = pygame.Rect(inner_x, fen_box_y, inner_w, fen_box_h)
-        draw_fen_y = fen_box_y - self.edit_scroll
-        if not (draw_fen_y + fen_box_h < vp_top or draw_fen_y > vp_bottom):
-            box_rect = pygame.Rect(inner_x, draw_fen_y, inner_w, fen_box_h)
-            pygame.draw.rect(self.screen, (24, 32, 44), box_rect, border_radius=8)
-            pygame.draw.rect(self.screen, (70, 90, 120), box_rect, width=1, border_radius=8)
-            fen_str = self.ai._board_to_fen(self.chess_info)
-            self._draw_wrapped_text(fen_str, inner_x + 8, draw_fen_y + 8,
-                                    inner_w - 16, 15, (180, 210, 235), 'small')
-
-        copy_y = fen_box_y + fen_box_h + 8
-        copy_rect = pygame.Rect(inner_x, copy_y, inner_w, 34)
-        self.edit_ui['copy_fen'] = copy_rect
-        draw_copy_y = copy_y - self.edit_scroll
-        if not (draw_copy_y + 34 < vp_top or draw_copy_y > vp_bottom):
-            self._draw_button(pygame.Rect(inner_x, draw_copy_y, inner_w, 34), '复制 FEN',
-                              'small', base=(60, 110, 150), hover=(78, 132, 172),
-                              text_color=(255, 255, 255))
 
         # 内容总高度（用于滚动条），并钳制滚动偏移
-        content_bottom = copy_y + 34
+        content_bottom = hint_y + 20
         self.edit_content_bottom = content_bottom
         max_scroll = max(0, content_bottom - vp_bottom)
         if self.edit_scroll > max_scroll:

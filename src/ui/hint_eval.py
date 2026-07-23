@@ -18,7 +18,7 @@ class HintEvalMixin:
     def handle_action(self, action: str):
         if action == 'restart':
             self._show_modal('confirm_restart', '新建棋局',
-                             '确定要开始新棋局吗？当前对局进度将丢失。',
+                             '开始新棋局吗？当前进度将丢失。',
                              [{'id': 'no', 'label': '取消'},
                               {'id': 'yes', 'label': '确定'}])
         elif action == 'undo':
@@ -75,17 +75,22 @@ class HintEvalMixin:
 
     def show_hint(self):
         """向引擎请求当前行棋方的最佳着法，并在棋盘上以箭头提示。"""
-        if self.chess_info.get_game_status() != 'playing':
-            return
         if self.is_ai_thinking:
             return
-        # 仅当轮到人类时给出提示
-        if self.game_mode == 'mvm':
-            return
-        if self.game_mode == 'pvm_red' and not self.chess_info.is_red_go:
-            return
-        if self.game_mode == 'pvm_black' and self.chess_info.is_red_go:
-            return
+        # 浏览加载的棋谱：对任意静态局面做分析，跳过多余的回合 / 模式限制
+        browsing = self.browse_index is not None
+        if browsing:
+            pass
+        else:
+            if self.chess_info.get_game_status() != 'playing':
+                return
+            # 仅当轮到人类时给出提示
+            if self.game_mode == 'mvm':
+                return
+            if self.game_mode == 'pvm_red' and not self.chess_info.is_red_go:
+                return
+            if self.game_mode == 'pvm_black' and self.chess_info.is_red_go:
+                return
 
         if not self.ai.is_initialized():
             self.ai.initialize()
@@ -93,6 +98,8 @@ class HintEvalMixin:
         self.hint_gen += 1
         self.hint_loading = True
         self._clear_hint()
+        # 浏览棋谱时记录支招对应的快照步，渲染时仅在该步保留提示
+        self.hint_browse_index = self.browse_index if browsing else -1
         t = threading.Thread(target=self._compute_hint)
         t.daemon = True
         t.start()
@@ -107,13 +114,28 @@ class HintEvalMixin:
             settings.skill_level = self.settings.skill_level
             settings.thinking_time = self.settings.thinking_time
             settings.contempt = self.settings.contempt
-            settings.force_variation = self.settings.force_variation
+            # 支招应优先给出引擎真正的最优着法，故不套用「强制变着」
+            # （MultiPV 已提供若干不同候选着法作为备选）。
+            settings.force_variation = False
             # 多路候选数：支招应给出足够多的条目。
             # 取设置中的 multi_pv 与充裕默认值的较大者（仍尊重用户设置里更大的值）；
             # 引擎不支持多路时退化为单路。
             hint_count = max(self.settings.multi_pv, 12) if self.ai.engine_supports_multi_pv else 1
             settings.multi_pv = hint_count
-            results = self.ai.get_top_moves(self.chess_info, settings, top_n=hint_count)
+            # 浏览加载的棋谱时，对「当前正在查看的快照局面」做分析，
+            # 而非实时（终局）局面。
+            target = self.chess_info
+            if self.hint_browse_index is not None and self.hint_browse_index >= 0:
+                k = self.hint_browse_index
+                if 0 <= k < len(self.board_snapshots):
+                    target = ChessInfo()
+                    target.piece = [row[:] for row in self.board_snapshots[k]]
+                    start_red = getattr(self, '_pgn_start_red', True)
+                    target.is_red_go = start_red if (k % 2 == 0) else (not start_red)
+                    target.is_machine = False
+                    target.status = 0
+                    target.setting = self.settings
+            results = self.ai.get_top_moves(target, settings, top_n=hint_count)
             self.hint_depth = self.ai.current_depth  # 记录支招实际搜索深度
             self.last_depth = self.ai.current_depth    # 记录支招达到的最大搜索深度
             self.hint_queue.put((gen, results))
@@ -198,7 +220,8 @@ class HintEvalMixin:
                     f'推荐{i+1} ({mv.from_pos.x},{mv.from_pos.y})→'
                     f'({mv.to_pos.x},{mv.to_pos.y}) {score_text}'
                 )
-                ai_lines.append({'score': score_text, 'my': my_cn, 'opp': opp_cn,
+                ai_lines.append({'score': score_text, 'score_num': red_persp,
+                                'my': my_cn, 'opp': opp_cn,
                                 'my_is_red': pid_my >= 8, 'pv_cn': pv_cn,
                                 'pv_moves': pv_moves})
             # 过滤：最优着法（红方视角评分最高的一路）无条件保留；
@@ -311,11 +334,14 @@ class HintEvalMixin:
                 raw = result.score
                 red_persp = raw if self.chess_info.is_red_go else -raw
                 self.eval_score = red_persp
-                self.eval_history.append(red_persp)
-                self.eval_depth = self.eval_ai.current_depth
+                # 模拟行棋或退出恢复时只刷新显示，不写入曲线（避免污染历史）
+                if not (self.simulating or self.eval_skip_append):
+                    self.eval_history.append(red_persp)
+                    self.eval_depth = self.eval_ai.current_depth
         except Exception as e:
             print('评估失败:', e)
         finally:
+            self.eval_skip_append = False
             self.eval_loading = False
 
     # ------------------------------------------------------------------
@@ -400,11 +426,11 @@ class HintEvalMixin:
             return '评估中…', (120, 132, 150)
         if abs(score) >= 10000:
             mate = score > 0
-            return ('红方 将杀' if mate else '黑方 将杀'), ((214, 56, 56) if mate else (45, 45, 48))
+            return ('将杀' if mate else '将杀'), ((200, 55, 55) if mate else (45, 52, 64))
         if score > 0:
-            return f' +{score}', (214, 56, 56)
+            return f'{score}', (200, 55, 55)            # 红优：红色，不带正号
         if score < 0:
-            return f' +{-score}', (45, 45, 48)
+            return f'{-score}', (45, 52, 64)            # 黑优：黑色，不带负号
         return '均势', (120, 132, 150)
 
 
@@ -629,12 +655,13 @@ class HintEvalMixin:
 
         # 评分药丸（紧凑，给着法序列让出更多横向空间）
         st = ln['score']
-        if st.startswith('+'):
-            scolor, sfill = (140, 226, 140), (38, 70, 42)
-        elif st.startswith('-'):
-            scolor, sfill = (244, 146, 146), (74, 40, 40)
+        sv = ln.get('score_num', 0)
+        if sv > 0:
+            scolor, sfill = (200, 55, 55), (250, 230, 230)    # 红优：红
+        elif sv < 0:
+            scolor, sfill = (40, 42, 50), (216, 218, 226)     # 黑优：黑
         else:
-            scolor, sfill = (240, 208, 134), (78, 66, 38)
+            scolor, sfill = (165, 125, 40), (244, 236, 210)   # 均势：金
         score_surf = self._text_surface(st, 'xsmall', scolor)
         chip_x = cx + badge_r * 2 + 1
         if score_surf:

@@ -117,6 +117,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.eval_depth = 0
         self.eval_gen = 0
         self.eval_loading = False
+        self.eval_skip_append = False   # 退出模拟/恢复时评估不写入曲线
         # 与 board_snapshots 对齐的分步评分（红方视角；None=未计算），用于加载棋谱后的评分曲线
         self.eval_by_step = []
         self.eval_step_gen = 0  # 批量评分代际号，用于取消过期的后台批量评分
@@ -132,11 +133,14 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.edit_drag_pos = None        # 拖拽时鼠标位置（屏幕坐标）
         self.edit_drag_start = None      # 拖拽起点（屏幕坐标）
         self.edit_drag_moved = False     # 本次拖拽是否已移动（区分点击与拖拽）
+        self._edit_drag_from = None      # 拖拽来源格（None 表示来自调色板）
+        self.edit_move_from = None       # 点击移动：待移动棋子源格（None 表示未选中）
         self._edit_last_click = None     # (cell, time, kind) 用于双击删除判定
         self._edit_pickup_cell = None    # 拾起棋子时的原格子（区分移动 / 删除）
         self.edit_history = []           # 摆棋操作撤销栈：每项可还原一次编辑
         self._candidate_last_click = None  # (index, tick) 候选着法双击进入模拟判定
         self.hint_gen = 0                  # 支招请求代号：用于中断时丢弃过期结果
+        self.hint_browse_index = -1         # 支招对应的棋谱快照步（-1 表示实时对局）
         self.hint_depth = 0                # 最近一次支招使用的搜索深度（展示在对局状态·深度）
         self.last_depth = 0                 # 最近一次搜索（AI 行棋 / 支招）达到的最大深度，展示为状态卡“最大深度”
         # 当前方行棋时间（每走一步重置，实时累计；单位秒）
@@ -174,6 +178,10 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         
         self.running = True
         self.clock = pygame.time.Clock()
+
+        # 启动即后台完整预初始化引擎（进程启动 + NNUE 权重加载），
+        # 使玩家第一步落子时引擎已就绪，不会因冷启动加载 NNUE 而卡顿。
+        self._warmup_engines()
 
 
     def _init_buttons(self):
@@ -308,10 +316,12 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                 return
 
             # 侧栏大按钮（优先于摆棋面板判断，确保任意模式下均可点击，如翻转棋盘）
-            for btn in self.side_buttons[1:]:
-                if btn['rect'].collidepoint(x, y):
-                    self.handle_action(btn['key'])
-                    return
+            # 摆棋模式下面板覆盖下方按钮，必须优先让面板消费点击，否则会穿透到背后按钮
+            if not self.editing:
+                for btn in self.side_buttons[1:]:
+                    if btn['rect'].collidepoint(x, y):
+                        self.handle_action(btn['key'])
+                        return
 
             # 棋谱列表：点击某步跳转复盘（非摆棋模式）
             if not self.editing:
@@ -331,13 +341,12 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                         self._edit_dragging = True
                         self._edit_drag_offset = y - thumb.y
                     return
-                # 摆棋面板：点中棋子则进入“拖拽到棋盘”（无移动则视为选中）
+                # 摆棋面板：点中棋子即选中（点击式摆棋：再点棋盘放置 / 移动）
                 item = self._palette_item_at(x, y)
                 if item and item[0] == 'piece':
-                    self.edit_drag_pid = item[1]
-                    self.edit_drag_pos = (x, y)
-                    self.edit_drag_start = (x, y)
-                    self.edit_drag_moved = False
+                    self.edit_piece = item[1]
+                    self.edit_move_from = None
+                    self.chess_info.select = Pos(-1, -1)
                     return
                 if item and item[0] == 'clear':
                     # 记录清空前的完整局面，便于悔棋一步还原
@@ -347,10 +356,8 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     for r in range(10):
                         for c in range(9):
                             self.chess_info.piece[r][c] = 0
+                    self.edit_move_from = None
                     self._after_edit()
-                    return
-                if item and item[0] == 'copy_fen':
-                    self._copy_text(self.ai._board_to_fen(self.chess_info))
                     return
                 # 点空白/置灰区域：取消当前选中
                 self.edit_piece = None
@@ -381,12 +388,6 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                             ty = y - self._edit_drag_offset
                             ratio = (ty - self.edit_vp.y) / (self.edit_vp.height - thumb.height)
                             self.edit_scroll = max(0, min(max_scroll, int(ratio * max_scroll)))
-                    # 摆棋区棋子拖拽：更新鼠标位置，移动超过阈值判定为拖拽
-                    if self.edit_drag_pid is not None:
-                        self.edit_drag_pos = event.pos
-                        if (abs(event.pos[0] - self.edit_drag_start[0]) > 6 or
-                                abs(event.pos[1] - self.edit_drag_start[1]) > 6):
-                            self.edit_drag_moved = True
                     # 候选列表滚动条拖拽
                     if self.candidate_dragging and self.candidate_max_scroll > 0:
                         self._candidate_scroll_to_y(event.pos[1])
@@ -394,28 +395,6 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     self.settings_drag_key = None
                     self._edit_dragging = False
                     self.candidate_dragging = False
-                    # 摆棋区拖拽落子：松手时若在棋盘上则放置
-                    if self.edit_drag_pid is not None:
-                        pid = self.edit_drag_pid
-                        mx, my = event.pos
-                        placed = False
-                        if mx < self.board_width:
-                            pos = self.chess_view.get_board_coordinates(mx, my - self.board_offset_y)
-                            if pos.x >= 0 and self._piece_count(pid) < self._piece_max_count(pid):
-                                self.chess_info.piece[pos.y][pos.x] = pid
-                                # 从调色板拖拽放置：记录可撤销项
-                                self.edit_history.append(
-                                    {'type': 'place', 'pos': (pos.x, pos.y), 'pid': pid})
-                                self._after_edit()
-                                placed = True
-                        # 放置到棋盘后取消选中（只选择一次）；仅在摆棋区点击未拖到棋盘时保持选中，便于随后点棋盘放置
-                        if placed:
-                            self.edit_piece = None
-                        else:
-                            self.edit_piece = pid if self._piece_count(pid) < self._piece_max_count(pid) else None
-                        self.edit_drag_pid = None
-                        self.edit_drag_pos = None
-                        self.edit_drag_moved = False
                 elif event.type == pygame.MOUSEWHEEL:
                     if self.editing and self.edit_vp is not None:
                         max_scroll = max(0, self.edit_content_bottom - self.edit_vp.bottom)
@@ -551,10 +530,13 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     self.chess_info.piece = self.board_snapshots[self.browse_index]
                     self.chess_info.select = Pos(-1, -1)
                     self.chess_info.ret = []
-                    self.chess_info.suggest_moves = []
-                    self.chess_info.suggest_move_labels = []
-                    self.chess_info.suggest = None
-                    self.chess_info.suggest_track = False
+                    # 若当前查看的快照恰好是刚支招的局面，则保留支招箭头 / 候选标签
+                    keep_hint = (self.hint_browse_index == self.browse_index)
+                    if not keep_hint:
+                        self.chess_info.suggest_moves = []
+                        self.chess_info.suggest_move_labels = []
+                        self.chess_info.suggest = None
+                        self.chess_info.suggest_track = False
                 self.chess_view.draw()
                 (self.chess_info.piece, self.chess_info.select, self.chess_info.ret,
                  self.chess_info.suggest_moves, self.chess_info.suggest_move_labels,

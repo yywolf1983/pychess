@@ -265,7 +265,7 @@ class SidebarMixin:
         # 信息行（标签左 / 数值右）
         total_moves = len(self.chess_info.move_history)
         if self.browse_index is not None:
-            step_info = f'复盘 {self.browse_index}/{len(self.board_snapshots) - 1}'
+            step_info = f' {self.browse_index}/{len(self.board_snapshots) - 1}'
         else:
             step_info = f'{total_moves} 步'
         score_text, score_color = self._format_score(self.eval_score)
@@ -441,39 +441,57 @@ class SidebarMixin:
         content_x = card_x + 40
         cx = card_x + card_w // 2
 
-        self._draw_text('设置', cx, card_y + 38, 'large', (40, 52, 72))
-        pygame.draw.line(self.screen, (220, 224, 232), (content_x, card_y + 62),
-                         (card_x + card_w - 40, card_y + 62), 1)
+        # ---- 标题区 ----
+        self._draw_text('设置', cx, card_y + 32, 'large', (40, 52, 72))
+        self._draw_text('对局偏好 · AI 强度', cx, card_y + 58, 'tiny', (150, 162, 180))
+        pygame.draw.rect(self.screen, (96, 156, 236),
+                         pygame.Rect(cx - 22, card_y + 72, 44, 3), border_radius=2)
 
-        # 音效设置
-        self._draw_section(content_x, card_y + 96, '音效设置')
-        music_check_rect = pygame.Rect(card_x + card_w - 90, card_y + 110, 42, 42)
-        self._draw_text_left('背景音乐', content_x, card_y + 132, 'ssmall', (60, 72, 92))
-        self._draw_toggle(music_check_rect, self.settings.is_music_play)
+        def subcard(r):
+            """浅灰圆角分区卡片，浮在白色主卡片之上。"""
+            pygame.draw.rect(self.screen, (244, 247, 250), r, border_radius=12)
+            pygame.draw.rect(self.screen, (226, 231, 238), r, border_radius=12, width=1)
 
-        effect_check_rect = pygame.Rect(card_x + card_w - 90, card_y + 160, 42, 42)
-        self._draw_text_left('音效', content_x, card_y + 182, 'ssmall', (60, 72, 92))
-        self._draw_toggle(effect_check_rect, self.settings.is_effect_play)
+        # ---- 音效设置 ----
+        sub_rect = pygame.Rect(card_x + 24, card_y + 92, card_w - 48, 126)
+        subcard(sub_rect)
+        self._draw_text_left('音效设置', sub_rect.x + 20, sub_rect.y + 22, 'ssmall', (150, 172, 200))
+        pygame.draw.line(self.screen, (140, 160, 185, 130),
+                         (sub_rect.x + 20, sub_rect.y + 38), (sub_rect.x + 60, sub_rect.y + 38), 1)
+        music_y = sub_rect.y + 76
+        self._draw_text_left('背景音乐', sub_rect.x + 20, music_y, 'ssmall', (60, 72, 92))
+        music_check_rect = pygame.Rect(sub_rect.right - 72, music_y - 14, 52, 28)
+        self._draw_toggle_pill(music_check_rect, self.settings.is_music_play)
+        effect_y = sub_rect.y + 112
+        self._draw_text_left('音效', sub_rect.x + 20, effect_y, 'ssmall', (60, 72, 92))
+        effect_check_rect = pygame.Rect(sub_rect.right - 72, effect_y - 14, 52, 28)
+        self._draw_toggle_pill(effect_check_rect, self.settings.is_effect_play)
 
-        # AI 设置（参数对齐 Android 版）
-        self._draw_section(content_x, card_y + 232, 'AI 设置')
+        # ---- AI 设置 ----
+        ai_rect = pygame.Rect(card_x + 24, card_y + 240, card_w - 48, 344)
+        subcard(ai_rect)
+        self._draw_text_left('AI 设置', ai_rect.x + 20, ai_rect.y + 22, 'ssmall', (150, 172, 200))
+        pygame.draw.line(self.screen, (140, 160, 185, 130),
+                         (ai_rect.x + 20, ai_rect.y + 38), (ai_rect.x + 56, ai_rect.y + 38), 1)
 
-        # 数值参数：减号(左) / 滑条 / 加号(右)；每项下方附一行灰色说明
+        # 数值参数：减号(左) / 滑条 / 加号(右)；每项浮于白色 pill 行卡之上，附一行灰色说明
         self.settings_sliders = []
-        minus_w, plus_w = 34, 34
-        slider_w = 156
-        gap = 10
-        col_r = card_x + card_w - 40
+        bw, slider_w, gap = 30, 150, 8
+        col_r = ai_rect.right - 24
 
         def draw_row(y, label, value, vmin, vmax, attr, key, hint='',
                      hint_color=(150, 162, 180)):
-            self._draw_text_left(f'{label}: {value}', content_x, y, 'ssmall', (60, 72, 92))
+            # 行卡片（白色 pill，浮于浅灰分区卡上，强化层次）
+            pill = pygame.Rect(ai_rect.x + 14, y - 26, ai_rect.width - 28, 50)
+            pygame.draw.rect(self.screen, (255, 255, 255), pill, border_radius=10)
+            pygame.draw.rect(self.screen, (232, 236, 242), pill, border_radius=10, width=1)
+            self._draw_text_left(f'{label}: {value}', ai_rect.x + 28, y - 6, 'ssmall', (60, 72, 92))
             if hint:
-                self._draw_text_left(hint, content_x, y + 17, 'tiny', hint_color)
+                self._draw_text_left(hint, ai_rect.x + 28, y + 13, 'tiny', hint_color)
             # 固定布局：减号在左、滑条居中、加号在右 → [−][滑条][+]
-            plus_rect = pygame.Rect(col_r - plus_w, y - 18, plus_w, 36)
-            track = pygame.Rect(plus_rect.x - gap - slider_w, y - 9, slider_w, 6)
-            minus_rect = pygame.Rect(track.x - gap - minus_w, y - 18, minus_w, 36)
+            plus_rect = pygame.Rect(col_r - bw, y - 15, bw, 30)
+            track = pygame.Rect(plus_rect.x - gap - slider_w, y - 4, slider_w, 8)
+            minus_rect = pygame.Rect(track.x - gap - bw, y - 15, bw, 30)
             self._draw_button(minus_rect, '-', 'large')
             self._draw_button(plus_rect, '+', 'large')
             self._draw_slider(track, value, vmin, vmax)
@@ -481,7 +499,7 @@ class SidebarMixin:
                                           'vmin': vmin, 'vmax': vmax, 'attr': attr})
             return minus_rect, plus_rect
 
-        row_top = card_y + 268
+        row_top = ai_rect.y + 56
         row_step = 60
         depth_minus_rect, depth_plus_rect = draw_row(
             row_top, '搜索深度 (层)', self.settings.depth, 5, 120, 'depth', 'depth',
@@ -497,19 +515,20 @@ class SidebarMixin:
             row_top + 3 * row_step, 'MultiPV (变)', self.settings.multi_pv, 1, 12,
             'multi_pv', 'multi', '返回候选着法数，用于支招列表展示')
 
-        # 强制变着（对齐 Android）
+        # 强制变着（胶囊开关）
         force_y = row_top + 4 * row_step
-        force_check_rect = pygame.Rect(card_x + card_w - 90, force_y - 12, 42, 42)
-        self._draw_text_left('强制变着', content_x, force_y + 10, 'ssmall', (60, 72, 92))
+        force_check_rect = pygame.Rect(ai_rect.right - 72, force_y - 14, 52, 28)
+        self._draw_text_left('强制变着', ai_rect.x + 20, force_y, 'ssmall', (60, 72, 92))
         self._draw_text_left('开启后尽量偏离常规最优着法，增加对局变化',
-                             content_x, force_y + 29, 'tiny', (150, 162, 180))
-        self._draw_toggle(force_check_rect, self.settings.force_variation)
+                             ai_rect.x + 20, force_y + 18, 'tiny', (150, 162, 180))
+        self._draw_toggle_pill(force_check_rect, self.settings.force_variation)
 
-        save_y = force_y + 76
-        save_rect = pygame.Rect(content_x, save_y, 230, 52)
+        # ---- 保存 / 取消 ----
+        save_y = ai_rect.bottom + 24
+        save_rect = pygame.Rect(card_x + 40, save_y, 220, 50)
         self._draw_button(save_rect, '保存设置', 'large',
                           base=(92, 184, 120), hover=(70, 160, 100), text_color=(255, 255, 255))
-        cancel_rect = pygame.Rect(card_x + card_w - 40 - 230, save_y, 230, 52)
+        cancel_rect = pygame.Rect(card_x + card_w - 40 - 220, save_y, 220, 50)
         self._draw_button(cancel_rect, '取消', 'large',
                           base=(206, 108, 108), hover=(188, 86, 86), text_color=(255, 255, 255))
 
@@ -531,23 +550,27 @@ class SidebarMixin:
 
 
     def _draw_slider(self, track, value, vmin, vmax):
-        """在减号/加号之间绘制评分滑块：轨道 + 已填充段 + 圆形滑块。"""
+        """在减号/加号之间绘制滑块：粗圆角轨道 + 蓝色填充段 + 带阴影圆形滑块。"""
         ratio = 0.0 if vmax == vmin else (value - vmin) / (vmax - vmin)
         ratio = max(0.0, min(1.0, ratio))
         # 轨道背景
         bg = pygame.Surface((track.width, track.height), pygame.SRCALPHA)
-        pygame.draw.rect(bg, (205, 211, 220), bg.get_rect(), border_radius=track.height // 2)
+        pygame.draw.rect(bg, (214, 220, 230), bg.get_rect(), border_radius=track.height // 2)
         self.screen.blit(bg, (track.x, track.y))
         # 已填充段（蓝色）
         fw = max(track.height, int(track.width * ratio))
         fill = pygame.Surface((fw, track.height), pygame.SRCALPHA)
         pygame.draw.rect(fill, (92, 156, 236), fill.get_rect(), border_radius=track.height // 2)
         self.screen.blit(fill, (track.x, track.y))
-        # 滑块圆点
+        # 滑块圆点（带阴影 + 白边）
         tx = track.x + int(track.width * ratio)
         ty = track.y + track.height // 2
-        pygame.draw.circle(self.screen, (255, 255, 255), (tx, ty), track.height // 2 + 4)
-        pygame.draw.circle(self.screen, (70, 130, 210), (tx, ty), track.height // 2 + 1)
+        kr = track.height // 2 + 5
+        shadow = pygame.Surface((kr * 2, kr * 2), pygame.SRCALPHA)
+        pygame.draw.circle(shadow, (0, 0, 0, 55), (kr, kr), kr)
+        self.screen.blit(shadow, (tx - kr + 1, ty - kr + 2))
+        pygame.draw.circle(self.screen, (255, 255, 255), (tx, ty), kr)
+        pygame.draw.circle(self.screen, (70, 130, 210), (tx, ty), kr - 2)
 
 
     def _settings_slider_down(self, x, y):

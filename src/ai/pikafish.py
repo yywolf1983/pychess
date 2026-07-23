@@ -46,7 +46,8 @@ class PikafishAI:
         self.last_info_score = None  # 引擎实时分数（行棋方视角，供 UI 实时更新曲线）
         self.engine_supports_multi_pv = True  # pikafish 引擎支持 MultiPV（多路提示）
         self.lock = threading.Lock()
-        
+        self._init_lock = threading.Lock()  # 防止并发初始化（预热线程与首步行棋线程）
+
     # 跨实例缓存：先探测成功的引擎路径，避免每次初始化都重新探测
     _cached_engine_path = None
 
@@ -116,14 +117,19 @@ class PikafishAI:
         只有能返回 bestmove 且不崩溃的引擎才被认为是可用的。"""
         try:
             _make_executable(engine_path)
-            proc = subprocess.Popen(
-                [engine_path],
+            popen_kwargs = dict(
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=os.path.dirname(engine_path),
             )
+            # 降低引擎进程优先级（Windows），避免其首步加载 NNUE 权重/搜索热身
+            # 时占满 CPU 把 UI 主线程饿死，导致「落子卡顿」。
+            if sys.platform == 'win32':
+                popen_kwargs['creationflags'] = getattr(
+                    subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0x4000)
+            proc = subprocess.Popen([engine_path], **popen_kwargs)
         except Exception:
             return False
 
@@ -201,68 +207,80 @@ class PikafishAI:
                 pass
     
     def initialize(self, engine_path: str = None):
-        if engine_path is None:
-            engine_path = self._get_engine_path()
-            if engine_path is None:
-                return
-        
-        try:
-            _make_executable(engine_path)
-            self.process = subprocess.Popen(
-                [engine_path],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                cwd=os.path.dirname(engine_path)
-            )
-            
-            self.reader = self.process.stdout
-            self.writer = self.process.stdin
-            
-            self._send_command('uci')
-            
-            uci_ok_received = False
-            start_time = time.time()
-            while not uci_ok_received and time.time() - start_time <= 10:
-                line = self._read_line()
-                if line and line == 'uciok':
-                    uci_ok_received = True
-                    self.initialized = True
-                    break
-                time.sleep(0.05)
-            
+        # 快速路径：已就绪直接返回，避免无谓加锁
+        if self.initialized:
+            return
+        # 加锁防止并发初始化（程序启动预热线程与首步行棋线程可能同时进入）
+        with self._init_lock:
             if self.initialized:
-                # 获取项目根目录
-                project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-                nnue_path = os.path.join(project_root, 'engine', 'pikafish.nnue')
-                if not os.path.exists(nnue_path):
-                    nnue_path = os.path.join(project_root, 'pikafish.nnue')
-                if os.path.exists(nnue_path):
-                    nnue_path = os.path.abspath(nnue_path).replace('\\', '/')
-                    self._send_command(f'setoption name EvalFile value {nnue_path}')
-                # 引擎资源类参数（线程/哈希内存）；不属于设置里的 AI 强度参数，
-                # 真正的棋力/Contempt/MultiPV 等每次搜索前会按设置重新下发。
-                # 线程数按 CPU 核心数自动分配，预留部分算力给系统与界面。
-                threads = self._default_threads()
-                self.threads = threads
-                self._send_command(f'setoption name Threads value {threads}')
-                self.hash_size = 128
-                self._send_command(f'setoption name Hash value {self.hash_size}')
-                self._send_command('isready')
+                return
+            if engine_path is None:
+                engine_path = self._get_engine_path()
+                if engine_path is None:
+                    return
+            
+            try:
+                _make_executable(engine_path)
+                popen_kwargs = dict(
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    cwd=os.path.dirname(engine_path),
+                )
+                # 降低引擎进程优先级（Windows），避免其加载 NNUE 权重/搜索时占满 CPU
+                # 把 UI 主线程饿死，导致「落子卡顿」；引擎仍能利用空闲核心并行计算。
+                if sys.platform == 'win32':
+                    popen_kwargs['creationflags'] = getattr(
+                        subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0x4000)
+                self.process = subprocess.Popen([engine_path], **popen_kwargs)
                 
-                ready_ok_received = False
+                self.reader = self.process.stdout
+                self.writer = self.process.stdin
+                
+                self._send_command('uci')
+                
+                uci_ok_received = False
                 start_time = time.time()
-                while not ready_ok_received and time.time() - start_time <= 10:
+                while not uci_ok_received and time.time() - start_time <= 10:
                     line = self._read_line()
-                    if line and line == 'readyok':
-                        ready_ok_received = True
+                    if line and line == 'uciok':
+                        uci_ok_received = True
+                        self.initialized = True
                         break
                     time.sleep(0.05)
-            
-        except Exception as e:
-            print(f"PikafishAI初始化失败: {e}")
-            self.close()
+                
+                if self.initialized:
+                    # 获取项目根目录
+                    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+                    nnue_path = os.path.join(project_root, 'engine', 'pikafish.nnue')
+                    if not os.path.exists(nnue_path):
+                        nnue_path = os.path.join(project_root, 'pikafish.nnue')
+                    if os.path.exists(nnue_path):
+                        nnue_path = os.path.abspath(nnue_path).replace('\\', '/')
+                        self._send_command(f'setoption name EvalFile value {nnue_path}')
+                    # 引擎资源类参数（线程/哈希内存）；不属于设置里的 AI 强度参数，
+                    # 真正的棋力/Contempt/MultiPV 等每次搜索前会按设置重新下发。
+                    # 线程数按 CPU 核心数自动分配，预留部分算力给系统与界面。
+                    threads = self._default_threads()
+                    self.threads = threads
+                    self._send_command(f'setoption name Threads value {threads}')
+                    self.hash_size = 128
+                    self._send_command(f'setoption name Hash value {self.hash_size}')
+                    self._send_command('isready')
+                    
+                    ready_ok_received = False
+                    start_time = time.time()
+                    while not ready_ok_received and time.time() - start_time <= 10:
+                        line = self._read_line()
+                        if line and line == 'readyok':
+                            ready_ok_received = True
+                            break
+                        time.sleep(0.05)
+                
+            except Exception as e:
+                print(f"PikafishAI初始化失败: {e}")
+                self.close()
     
     def _send_command(self, command: str):
         if self.writer:
@@ -329,6 +347,16 @@ class PikafishAI:
                     return result
 
         return MoveWithScore(self._get_default_move(chess_info), 0)
+
+    @staticmethod
+    def _encode_mate_score(mate_in: int) -> int:
+        """将 UCI 的 mate 分值编码为红方视角整数，保证：
+        - 绝对值 >= 10000，上层可据此识别为「将杀」；
+        - 越快将杀分值越极端（mate_in 越小越极端），正确压过普通 centipawn 评分。
+        """
+        if mate_in > 0:
+            return 100000 - mate_in * 100
+        return -100000 - mate_in * 100
 
     def _search_once(self, chess_info: ChessInfo, settings=None) -> MoveWithScore:
         """在已初始化且持有 self.lock 的前提下执行一次搜索。
@@ -441,10 +469,7 @@ class PikafishAI:
                                 elif parts[i + 1] == 'mate':
                                     try:
                                         mate_in = int(parts[i + 2])
-                                        if mate_in > 0:
-                                            score = 1000 - mate_in * 10
-                                        else:
-                                            score = -1000 + mate_in * 10
+                                        score = self._encode_mate_score(mate_in)
                                     except:
                                         pass
                                 self.last_info_score = score  # 实时分数（行棋方视角）
@@ -585,7 +610,7 @@ class PikafishAI:
                                 elif parts[i + 1] == 'mate':
                                     try:
                                         mate_in = int(parts[i + 2])
-                                        sc = 1000 - mate_in * 10 if mate_in > 0 else -1000 + mate_in * 10
+                                        sc = self._encode_mate_score(mate_in)
                                     except Exception:
                                         pass
                             elif parts[i] == 'pv' and i + 1 < len(parts):
