@@ -302,49 +302,6 @@ class GameFlowMixin:
             return '1/2-1/2'
         return '*'
 
-    def _system_file_path(self, mode):
-        """打开系统文件管理器对话框确认位置。
-
-        返回选中的路径字符串；用户取消返回 ``None``；系统对话框不可用（如缺少
-        tkinter）返回空字符串 ``''``，调用方据此回退到内置逻辑。
-        """
-        try:
-            import tkinter as tk
-            from tkinter import filedialog
-        except Exception:
-            return ''
-        try:
-            root = tk.Tk()
-            root.withdraw()
-            try:
-                root.attributes('-topmost', True)
-            except Exception:
-                pass
-            if mode == 'save':
-                default_name = f'chess_{datetime.now().strftime("%Y%m%d_%H%M%S")}.pgn'
-                path = filedialog.asksaveasfilename(
-                    title='保存棋谱',
-                    defaultextension='.pgn',
-                    initialfile=default_name,
-                    initialdir=self.save_dir,
-                    filetypes=[('棋谱文件 (*.pgn)', '*.pgn'),
-                               ('所有文件 (*.*)', '*.*')])
-            else:
-                path = filedialog.askopenfilename(
-                    title='打开棋谱',
-                    initialdir=self.save_dir,
-                    filetypes=[('棋谱文件 (*.pgn)', '*.pgn'),
-                               ('所有文件 (*.*)', '*.*')])
-            root.destroy()
-            return path or None
-        except Exception as e:
-            logger.error('文件对话框异常: %s', e)
-            try:
-                root.destroy()
-            except Exception:
-                pass
-            return None
-
     def _prepare_save(self):
         """构造保存所需数据：对局信息、起点局面、起点行棋方、头信息。
 
@@ -368,16 +325,8 @@ class GameFlowMixin:
         return ci, hist, start_board, start_red, headers
 
     def save_game(self):
-        """保存当前对局为 PGN 棋谱：优先弹出系统保存对话框确认位置，
-        无系统对话框的环境回退到默认目录自动命名。"""
-        path = self._system_file_path('save')
-        if path is None:
-            self.show_toast('已取消保存')
-            return
-        if not path:
-            self._save_game_auto()
-            return
-        self._save_game_to(path)
+        """打开跨平台文件对话框，将当前对局保存为 PGN 棋谱。"""
+        self._open_file_dialog('save')
 
     def _save_game_to(self, path):
         """将棋谱写入指定路径。"""
@@ -421,56 +370,9 @@ class GameFlowMixin:
             logger.error('保存失败: %s', e)
 
     def load_game(self):
-        """打开系统文件管理器选择要加载的 PGN 棋谱；无系统对话框则回退到内置浏览器。"""
-        path = self._system_file_path('open')
-        if path is None:
-            return
-        if not path:
-            self._open_save_browser()
-            return
-        self._apply_pgn_data(path)
+        """打开跨平台文件对话框，选择要加载的 PGN 棋谱。"""
+        self._open_file_dialog('open')
 
-
-    def _open_save_browser(self):
-        try:
-            os.makedirs(self.save_dir, exist_ok=True)
-            files = sorted([fn for fn in os.listdir(self.save_dir)
-                            if fn.startswith('chess_') and fn.endswith('.pgn')],
-                           reverse=True)
-            entries = []
-            for fn in files:
-                full = os.path.join(self.save_dir, fn)
-                try:
-                    with open(full, 'r', encoding='utf-8') as f:
-                        text = f.read()
-                    parsed = pgn_lib.parse_pgn(text)
-                    moves = len(parsed['moves'])
-                    start_red = True
-                    fen = parsed['headers'].get('FEN')
-                    if fen:
-                        _, start_red = pgn_lib.fen_to_board_array(fen)
-                    red = parsed['headers'].get('Red') or ('红方' if start_red else '黑方')
-                    black = parsed['headers'].get('Black') or ('黑方' if start_red else '红方')
-                    entries.append({
-                        'name': fn,
-                        'path': full,
-                        'saved_at': datetime.fromtimestamp(
-                            os.path.getmtime(full)).strftime('%Y-%m-%d %H:%M'),
-                        'moves': moves,
-                        'is_red_go': start_red,
-                        'game_mode': 'pgn',
-                        'red': red,
-                        'black': black,
-                    })
-                except Exception:
-                    continue
-            if not entries:
-                self.show_toast('没有可加载的棋谱')
-                return
-            self.save_browser = {'entries': entries, 'rects': [], 'close_rect': None}
-        except Exception as e:
-            self.show_toast('读取棋谱失败')
-            logger.error('读取棋谱失败: %s', e)
 
 
     def _apply_pgn_data(self, path):
@@ -559,7 +461,6 @@ class GameFlowMixin:
             self.edit_drag_moved = False
             self.is_ai_thinking = False
             self.hint_window = None
-            self.save_browser = None
             self._clear_hint()
             ci.suggest_moves = []
             ci.suggest_move_labels = []

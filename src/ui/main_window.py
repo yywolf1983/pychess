@@ -18,6 +18,7 @@ from .board_interaction import BoardInteractionMixin
 from .dialogs import DialogsMixin
 from .draw_helpers import DrawHelpersMixin
 from .edit_panel import EditPanelMixin
+from .file_dialog import FileDialogMixin
 from .game_flow import GameFlowMixin
 from .hint_eval import HintEvalMixin
 from .sidebar import SidebarMixin
@@ -25,7 +26,7 @@ from .simulation import SimulationMixin
 from .text_render import TextRenderMixin
 from .widgets import WidgetsMixin
 
-class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPanelMixin, GameFlowMixin, HintEvalMixin, SidebarMixin, SimulationMixin, TextRenderMixin, WidgetsMixin):
+class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPanelMixin, FileDialogMixin, GameFlowMixin, HintEvalMixin, SidebarMixin, SimulationMixin, TextRenderMixin, WidgetsMixin):
 
     GAME_MODES = {
         'pvp': '双人对战',
@@ -125,7 +126,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.board_snapshots = []  # 每一步（含初始）的棋盘快照，供上一步/下一步使用
 
         self.save_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'saves')
-        self.save_browser = None   # 存档浏览器窗口
+        self.file_dialog = None    # 跨平台文件对话框（打开/保存棋谱）
 
         self.mouse_pos = (0, 0)
         self.show_settings = False
@@ -285,10 +286,6 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     return
             return
 
-        # 存档浏览器优先消费点击
-        if self._handle_save_browser_click(x, y):
-            return
-
         # 顶部菜单栏：新局 / 加载 / 保存 / 设置 + 模式（下拉）
         if self.mode_menu_open:
             # 选中模式项：切换并关闭
@@ -415,7 +412,9 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     self._edit_dragging = False
                     self.candidate_dragging = False
                 elif event.type == pygame.MOUSEWHEEL:
-                    if self.editing and self.edit_vp is not None:
+                    if self.file_dialog:
+                        self._handle_file_dialog_wheel(event)
+                    elif self.editing and self.edit_vp is not None:
                         max_scroll = max(0, self.edit_content_bottom - self.edit_vp.bottom)
                         if max_scroll > 0:
                             self.edit_scroll = max(0, min(max_scroll, self.edit_scroll - event.y * 40))
@@ -438,18 +437,27 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                                 0, min(self._move_max_scroll,
                                        self._move_scroll - event.y * 28))
                 elif event.type == pygame.KEYDOWN:
-                    if self.simulating:
+                    if self.file_dialog:
+                        self._handle_file_dialog_key(event)
+                    elif self.simulating:
                         if event.key in (pygame.K_RIGHT, pygame.K_SPACE):
                             self.sim_step_forward()
                         elif event.key == pygame.K_LEFT:
                             self.sim_step_back()
                         elif event.key == pygame.K_ESCAPE:
                             self.end_simulation()
+                elif event.type == pygame.TEXTINPUT:
+                    if self.file_dialog and self.file_dialog['mode'] == 'save' \
+                            and self.file_dialog.get('input_active'):
+                        self._file_dialog_input(event.text)
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # 忽略滚轮按键（4/5），避免被误判为点击而触发选择/模拟
                     if event.button in (4, 5):
                         continue
                     x, y = event.pos
+                    if self.file_dialog:
+                        self._handle_file_dialog_click(x, y)
+                        continue
                     if self.show_settings:
                         if not self._settings_slider_down(x, y):
                             self.handle_settings_click(x, y)
@@ -546,7 +554,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                 self._draw_mode_menu()
                 self._draw_edit_drag_ghost()
                 self._draw_game_over()
-                self._draw_save_browser()
+                self._draw_file_dialog()
 
             # 弹窗覆盖在最上层
             self._draw_modal()

@@ -67,12 +67,10 @@ def _source_label(piece_2d, pid: int, fx: int, fy: int, is_red: bool) -> str:
     ordered = sorted(same, reverse=is_red)  # 红方大 y 在前（靠近对方），黑方小 y 在前
     idx = ordered.index(fy)
     n = len(ordered)
-    if pid in (7, 14):  # 兵/卒：前 + 中文数字序号
-        if idx == 0:
-            return '前'
-        return '二三四五六七八九'[idx - 1]
     if n == 2:
         return '前' if idx == 0 else '后'
+    if pid in (7, 14):  # 兵/卒 3+：前 + 中文数字序号（二/三…）
+        return '前' if idx == 0 else '二三四五六七八九'[idx - 1]
     if idx == 0:
         return '前'
     if idx == n // 2:
@@ -142,6 +140,13 @@ def _canon_notation(notation: str) -> str:
     return s.translate(str.maketrans(_CN_NUM, '123456789'))
 
 
+def _norm_pawn_label(s: str) -> str:
+    """兵/卒在 2 子同列时，源子前缀「后」与「二」等价（新旧记法差异），统一为「二」以便比较。"""
+    if len(s) >= 2 and s[1] in ('兵', '卒') and s[0] == '后':
+        return '二' + s[1:]
+    return s
+
+
 def chinese_to_move(piece_2d, is_red_turn: bool, notation: str):
     """将中文着法记谱（如「炮二平五」）解析为 (fx, fy, tx, ty)。
 
@@ -154,8 +159,9 @@ def chinese_to_move(piece_2d, is_red_turn: bool, notation: str):
     """
     if not notation or len(notation) < 4:
         return None
-    # 兼容全角数字记谱（如「卒５平６」），统一转为半角再解析
+    # 兼容全角数字记谱（如「卒５平６」）、繁体「後」棋谱，统一规范后再解析
     notation = _normalize_notation(notation)
+    notation = notation.replace('後', '后')
 
     from .rule import possible_moves
 
@@ -164,7 +170,7 @@ def chinese_to_move(piece_2d, is_red_turn: bool, notation: str):
             # move_to_chinese 对红黑、前后/中/数字前缀、全角/半角数字的记谱风格不一，
             # 因此统一转为「数字规范形」再比较：红黑与各种数字写法均能匹配。
             gen = move_to_chinese(pid, fx, fy, m.x, m.y, piece_2d)
-            if _canon_notation(gen) == _canon_notation(notation):
+            if _canon_notation(_norm_pawn_label(gen)) == _canon_notation(_norm_pawn_label(notation)):
                 return (fx, fy, m.x, m.y)
         return None
 
