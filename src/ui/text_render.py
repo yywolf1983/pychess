@@ -24,6 +24,8 @@ class TextRenderMixin:
         """
         here = os.path.dirname(os.path.abspath(__file__))
         candidates = [
+            # 0) 项目指定手写体（毛笔风格，优先使用）
+            os.path.join(here, '..', '..', 'config', 'MaShanZheng-Regular.ttf'),
             # 1) 随项目打包（相对路径，跨系统保证可用）
             os.path.join(here, '..', 'resources', 'fonts', 'cjk.ttf'),
             os.path.join(here, '..', '..', 'src', 'resources', 'fonts', 'cjk.ttf'),

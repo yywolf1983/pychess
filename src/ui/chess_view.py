@@ -268,6 +268,8 @@ class ChessView:
         """解析一个含中文数字的字体（优先级：项目打包字体 -> 系统常见中文字体）。"""
         here = os.path.dirname(__file__)
         candidates = [
+            # 项目指定手写体（毛笔风格，优先用于棋盘坐标与棋子文字）
+            os.path.join(here, '..', '..', 'config', 'MaShanZheng-Regular.ttf'),
             os.path.join(here, '..', '..', 'src', 'resources', 'fonts', 'cjk.ttf'),
             'C:/Windows/Fonts/msyh.ttc',
             'C:/Windows/Fonts/simhei.ttf',
