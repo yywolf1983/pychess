@@ -646,9 +646,8 @@ class HintEvalMixin:
         full_pv = ln.get('pv_cn') or ([ln['my']] + ([ln['opp']] if ln['opp'] else []))
         txt_x = chip_x + 2
         if best:
-            # 最优着法前面加星（原位置），左侧已压缩以腾出空间保证首行也能显示更多步
-            self._draw_text_left('★', txt_x, rect.y + rect.height // 2, 'xsmall', (240, 200, 120))
-            txt_x += 11
+            # 最优着法不再加星号（按需求去掉前缀星标）
+            pass
         # 传入绝对右边界（rect.right-1），与函数内绝对坐标 xx 同基准比较，
         # 避免把绝对坐标与“相对可用宽度”误比导致提前截断、省略号远离边框
         right_edge = max(txt_x + 1, rect.right - 1)
