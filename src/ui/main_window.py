@@ -64,8 +64,10 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
     def __init__(self):
         pygame.init()
         
+        # 棋盘尺寸交由 ChessView 计算（含上下各 10px 留白），此处先取初值占位，
+        # 实例化后会被 chess_view.board_width / board_height 覆盖，保证两者一致。
         self.board_width = int(750 * 0.72)
-        self.board_height = int(909 * 0.72)
+        self.board_height = int((909 + 2 * 10) * 0.72)
         self.sidebar_width = 250
         # 顶部菜单栏（新局/加载/保存/设置/对战模式）
         self.menu_h = 54
@@ -83,6 +85,9 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.chess_view = ChessView(
             self.screen.subsurface((0, self.board_offset_y, self.board_width, self.board_height)),
             self.chess_info)
+        # 以 ChessView 的实际尺寸为准（含上下各 10px 留白），回写主窗口，保证一致。
+        self.board_width = self.chess_view.board_width
+        self.board_height = self.chess_view.board_height
         self.ai = PikafishAI()
         # 独立于行棋引擎的“评估引擎”：评分/曲线/和棋判定都走它，
         # 与 self.ai（AI 行棋、支招）完全隔离，互不影响、互不抢占线程。

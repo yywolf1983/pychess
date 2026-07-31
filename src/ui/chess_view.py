@@ -25,11 +25,22 @@ class ChessView:
         self.gx_raw = [33, 125, 208, 291, 374, 457, 540, 623, 706]
         self.gy_raw = [70, 163, 245, 328, 411, 494, 577, 661, 743, 827]
         self.padding_left = self.gx_raw[0] * self.scale
-        self.padding_top = self.gy_raw[0] * self.scale
-        # 棋子尺寸与棋盘缩放等比联动（原 scale=0.9 时为 72）
-        self.piece_size = int(80 * self.scale)
+        # 棋盘图上下各留 10px 空白：网格实际只占 board_height - 2*board_padding，
+        # 行坐标需扣除顶部留白，故 padding_top 不再取首行 raw 坐标，而取该留白。
+        self.board_padding = 10 * self.scale
+        self.padding_top = self.board_padding
+        # 棋子尺寸单独放大到 0.8 对应尺寸（64px），不随棋盘 scale 变化
+        self.piece_size = int(80 * 0.76)
         self.board_width = int(750 * self.scale)
-        self.board_height = int(909 * self.scale)
+        self.board_height = int((909 + 2 * 10) * self.scale)
+        # 所有棋子相对格线整体下移若干源像素（随缩放联动），高亮/提示线同步下移。
+        self.piece_offset_y = 10 * self.scale
+        # 红黑双方底线（y=0 / y=9）额外再向下偏移一点（避免贴边）。
+        self.line_extra_offset_y = 8 * self.scale
+        # 所有棋子相对格线整体向右偏移一点（随缩放联动）。
+        self.piece_offset_x = 6 * self.scale
+        # 最左列（x=0）棋子额外右移一点，使其不贴边不裁切，和其他列间距一致。
+        self.edge_offset_x = int(self.piece_size * 0.1)
         # 棋子以【中心】对齐图片格线交点（象棋棋子落在线点中心）
         self._piece_cx_off = -self.piece_size // 2
         self._piece_cy_off = -self.piece_size // 2
@@ -324,12 +335,14 @@ class ChessView:
         red_color = (196, 56, 48)     # 红方：红
         black_color = (70, 70, 82)    # 黑方：深灰
         # 黑方贴近边缘(0.3)；红方向内回收 0.1 -> 0.4（更靠近网格线）
-        top_y_black = int(self._gy(0) * 0.3)
-        bottom_y_black = int(self.board_height - (self.board_height - self._gy(9)) * 0.3)
-        top_y_red = int(self._gy(0) * 0.4)
-        bottom_y_red = int(self.board_height - (self.board_height - self._gy(9)) * 0.4)
+        # 座标整体向下偏移一点（与棋子视觉协调）
+        coord_offset_y = int(10 * self.scale)
+        top_y_black = int(self._gy(0) * 0.3) + coord_offset_y
+        bottom_y_black = int(self.board_height - (self.board_height - self._gy(9)) * 0.3) + coord_offset_y
+        top_y_red = int(self._gy(0) * 0.4) + coord_offset_y
+        bottom_y_red = int(self.board_height - (self.board_height - self._gy(9)) * 0.4) + coord_offset_y
         for x in range(9):
-            sx = self._gx_p(x)
+            sx = self._gx_p(x) + (self.edge_offset_x if x == 0 else 0)
             red_num = CN[8 - x]       # 红方右手(物理列8)=一，向左递增
             black_num = AR[x]         # 黑方右手(物理列0)=1，向右递增
             if self.board_flipped:
@@ -346,8 +359,11 @@ class ChessView:
             for x in range(9):
                 piece_id = self.chess_info.piece[y][x]
                 if piece_id > 0:
-                    screen_x = self._gx_p(x) + self._piece_cx_off
-                    screen_y = self._gy_p(9 - y) + self._piece_cy_off
+                    screen_x = self._gx_p(x) + self._piece_cx_off + self.piece_offset_x + (
+                        self.edge_offset_x if x == 0 else 0)
+                    # 所有棋子整体相对格线向下偏移；红黑底线额外再下移一点
+                    screen_y = self._gy_p(9 - y) + self._piece_cy_off + self.piece_offset_y + (
+                        self.line_extra_offset_y if y in (0, 9) else 0)
                     
                     if piece_id <= 7:
                         idx = piece_id - 1
@@ -366,7 +382,8 @@ class ChessView:
             
             if piece_id > 0:
                 screen_x = self._gx_p(x) + self._piece_cx_off
-                screen_y = self._gy_p(9 - y) + self._piece_cy_off
+                screen_y = self._gy_p(9 - y) + self._piece_cy_off + self.piece_offset_y + (
+                    self.line_extra_offset_y if y in (0, 9) else 0)
                 
                 is_red_piece = piece_id >= 8
                 # 颜色提示：选中格子叠加半透明底色（红方暖色 / 黑方冷色）
@@ -383,8 +400,10 @@ class ChessView:
     def _draw_possible_moves(self):
         if self.chess_info.ret:
             for pos in self.chess_info.ret:
-                screen_x = self._gx_p(pos.x) + self._piece_cx_off
-                screen_y = self._gy_p(9 - pos.y) + self._piece_cy_off
+                screen_x = self._gx_p(pos.x) + self._piece_cx_off + self.piece_offset_x + (
+                    self.edge_offset_x if pos.x == 0 else 0)
+                screen_y = self._gy_p(9 - pos.y) + self._piece_cy_off + self.piece_offset_y + (
+                    self.line_extra_offset_y if pos.y in (0, 9) else 0)
                 
                 if self._pot_scaled:
                     self.screen.blit(self._pot_scaled, (screen_x, screen_y))
@@ -402,10 +421,12 @@ class ChessView:
             draw_pre_y = 9 - pre_y
             draw_cur_y = 9 - cur_y
             
-            pre_screen_x = self._gx_p(pre_x) + self._piece_cx_off
-            pre_screen_y = self._gy_p(draw_pre_y) + self._piece_cy_off
-            cur_screen_x = self._gx_p(cur_x) + self._piece_cx_off
-            cur_screen_y = self._gy_p(draw_cur_y) + self._piece_cy_off
+            pre_screen_x = self._gx_p(pre_x) + self._piece_cx_off + self.piece_offset_x + (
+                self.edge_offset_x if pre_x == 0 else 0)
+            pre_screen_y = self._gy_p(draw_pre_y) + self._piece_cy_off + self.piece_offset_y
+            cur_screen_x = self._gx_p(cur_x) + self._piece_cx_off + self.piece_offset_x + (
+                self.edge_offset_x if cur_x == 0 else 0)
+            cur_screen_y = self._gy_p(draw_cur_y) + self._piece_cy_off + self.piece_offset_y
             
             is_black_piece = piece_id >= 1 and piece_id <= 7
             box_img = self._b_box_scaled if is_black_piece else self._r_box_scaled
