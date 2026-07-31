@@ -66,8 +66,8 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         
         # 棋盘尺寸交由 ChessView 计算（含上下各 10px 留白），此处先取初值占位，
         # 实例化后会被 chess_view.board_width / board_height 覆盖，保证两者一致。
-        self.board_width = int(750 * 0.72)
-        self.board_height = int((909 + 2 * 10) * 0.72)
+        self.board_width = int(750 * 0.85)
+        self.board_height = int((909 + 2 * 10) * 0.85)
         self.sidebar_width = 250
         # 顶部菜单栏（新局/加载/保存/设置/对战模式）
         self.menu_h = 54
