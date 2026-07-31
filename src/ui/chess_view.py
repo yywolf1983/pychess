@@ -35,8 +35,12 @@ class ChessView:
         self.board_height = int((909 + 2 * 10) * self.scale)
         # 所有棋子相对格线整体下移若干源像素（随缩放联动），高亮/提示线同步下移。
         self.piece_offset_y = 10 * self.scale
-        # 所有棋子相对格线整体向右偏移一点（随缩放联动）。
-        self.piece_offset_x = 6 * self.scale
+        # 棋子水平方向回到格线中心，不做整体右移。
+        self.piece_offset_x = 0
+        # 仅最左侧一列（x=0）向右一点点，避免贴边（其他列不动）。
+        self.first_col_offset_x = int(6 * self.scale)
+        # 黑方第一行（y=9，车马相）单独向下一点点，修正其略偏上的视觉。
+        self.black_first_row_offset_y = int(5 * self.scale)
         # 棋子以【中心】对齐图片格线交点（象棋棋子落在线点中心）
         self._piece_cx_off = -self.piece_size // 2
         self._piece_cy_off = -self.piece_size // 2
@@ -330,17 +334,16 @@ class ChessView:
         AR = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
         red_color = (196, 56, 48)     # 红方：红
         black_color = (70, 70, 82)    # 黑方：深灰
-        # 黑方贴近边缘(0.3)；红方向内回收 0.1 -> 0.4（更靠近网格线）
-        # 座标整体向下偏移一点（与棋子视觉协调）
-        coord_offset_y = int(10 * self.scale)
-        top_y_black = int(self._gy(0) * 0.3) + coord_offset_y
-        bottom_y_black = int(self.board_height - (self.board_height - self._gy(9)) * 0.3) + coord_offset_y
-        # 红方座标放在底线棋子下方、靠近棋子下边缘的可见区，再向上 10px
-        red_up = 10
-        top_y_red = int(self._gy(0) * 0.4) + coord_offset_y - red_up
-        bottom_y_red = int(self.board_height - (self.board_height - self._gy(9)) * 0.4) + coord_offset_y - red_up
+        # 参考 ChineseChess：坐标文字锚定在同一格点换算体系，黑方在顶部带、红方在底部带，
+        # 红黑对称、无特例（RED_UP=0）；band 为固定边带偏移（对应参考设计单位的 30~46）。
+        # 与棋子共用同一整体平移（piece_offset_x/y），保证坐标与棋子中心处于同一体系。
+        band = int(46 * self.scale)
+        top_y_black = int(self._gy(0) + self.piece_offset_y) - band
+        bottom_y_black = int(self._gy(9) + self.piece_offset_y) + band
+        top_y_red = top_y_black
+        bottom_y_red = bottom_y_black
         for x in range(9):
-            sx = self._gx_p(x)
+            sx = self._gx_p(x) + (self.first_col_offset_x if x == 0 else 0)
             red_num = CN[8 - x]       # 红方右手(物理列8)=一，向左递增
             black_num = AR[x]         # 黑方右手(物理列0)=1，向右递增
             if self.board_flipped:
@@ -357,9 +360,11 @@ class ChessView:
             for x in range(9):
                 piece_id = self.chess_info.piece[y][x]
                 if piece_id > 0:
-                    screen_x = self._gx_p(x) + self._piece_cx_off + self.piece_offset_x
-                    # 所有棋子整体相对格线向下偏移（各行偏移统一）
-                    screen_y = self._gy_p(9 - y) + self._piece_cy_off + self.piece_offset_y
+                    screen_x = self._gx_p(x) + self._piece_cx_off + self.piece_offset_x + (
+                        self.first_col_offset_x if x == 0 else 0)
+                    # 所有棋子整体相对格线向下偏移；黑方第一行（y=9）额外下移一点点
+                    screen_y = self._gy_p(9 - y) + self._piece_cy_off + self.piece_offset_y + (
+                        self.black_first_row_offset_y if y == 9 else 0)
                     
                     if piece_id <= 7:
                         idx = piece_id - 1
@@ -377,8 +382,10 @@ class ChessView:
             piece_id = self.chess_info.piece[y][x]
             
             if piece_id > 0:
-                screen_x = self._gx_p(x) + self._piece_cx_off + self.piece_offset_x
-                screen_y = self._gy_p(9 - y) + self._piece_cy_off + self.piece_offset_y
+                screen_x = self._gx_p(x) + self._piece_cx_off + self.piece_offset_x + (
+                    self.first_col_offset_x if x == 0 else 0)
+                screen_y = self._gy_p(9 - y) + self._piece_cy_off + self.piece_offset_y + (
+                    self.black_first_row_offset_y if y == 9 else 0)
                 
                 is_red_piece = piece_id >= 8
                 # 颜色提示：选中格子叠加半透明底色（红方暖色 / 黑方冷色）
@@ -395,8 +402,10 @@ class ChessView:
     def _draw_possible_moves(self):
         if self.chess_info.ret:
             for pos in self.chess_info.ret:
-                screen_x = self._gx_p(pos.x) + self._piece_cx_off + self.piece_offset_x - 4
-                screen_y = self._gy_p(9 - pos.y) + self._piece_cy_off + self.piece_offset_y
+                screen_x = self._gx_p(pos.x) + self._piece_cx_off + self.piece_offset_x + (
+                    self.first_col_offset_x if pos.x == 0 else 0)
+                screen_y = self._gy_p(9 - pos.y) + self._piece_cy_off + self.piece_offset_y + (
+                    self.black_first_row_offset_y if pos.y == 9 else 0)
                 
                 if self._pot_scaled:
                     self.screen.blit(self._pot_scaled, (screen_x, screen_y))
@@ -414,10 +423,14 @@ class ChessView:
             draw_pre_y = 9 - pre_y
             draw_cur_y = 9 - cur_y
             
-            pre_screen_x = self._gx_p(pre_x) + self._piece_cx_off + self.piece_offset_x
-            pre_screen_y = self._gy_p(draw_pre_y) + self._piece_cy_off + self.piece_offset_y
-            cur_screen_x = self._gx_p(cur_x) + self._piece_cx_off + self.piece_offset_x
-            cur_screen_y = self._gy_p(draw_cur_y) + self._piece_cy_off + self.piece_offset_y
+            pre_screen_x = self._gx_p(pre_x) + self._piece_cx_off + self.piece_offset_x + (
+                self.first_col_offset_x if pre_x == 0 else 0)
+            pre_screen_y = self._gy_p(draw_pre_y) + self._piece_cy_off + self.piece_offset_y + (
+                self.black_first_row_offset_y if pre_y == 9 else 0)
+            cur_screen_x = self._gx_p(cur_x) + self._piece_cx_off + self.piece_offset_x + (
+                self.first_col_offset_x if cur_x == 0 else 0)
+            cur_screen_y = self._gy_p(draw_cur_y) + self._piece_cy_off + self.piece_offset_y + (
+                self.black_first_row_offset_y if cur_y == 9 else 0)
             
             is_black_piece = piece_id >= 1 and piece_id <= 7
             box_img = self._b_box_scaled if is_black_piece else self._r_box_scaled
@@ -483,11 +496,13 @@ class ChessView:
         draw_from_y = 9 - from_y
         draw_to_y = 9 - to_y
 
-        # 棋子以网格交点为中心绘制，支招线条也应落在交点，避免半格错位
-        from_center_x = self._gx_p(from_x)
-        from_center_y = self._gy_p(draw_from_y)
-        to_center_x = self._gx_p(to_x)
-        to_center_y = self._gy_p(draw_to_y)
+        # 棋子以网格交点为中心绘制（并叠加统一整体偏移），支招线条也应落在同一中心
+        from_center_x = self._gx_p(from_x) + self.piece_offset_x
+        from_center_y = self._gy_p(draw_from_y) + self.piece_offset_y + (
+            self.black_first_row_offset_y if from_y == 9 else 0)
+        to_center_x = self._gx_p(to_x) + self.piece_offset_x
+        to_center_y = self._gy_p(draw_to_y) + self.piece_offset_y + (
+            self.black_first_row_offset_y if to_y == 9 else 0)
 
         f = self.scale / 0.9
         dx = to_center_x - from_center_x
