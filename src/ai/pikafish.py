@@ -12,6 +12,7 @@ from ..game.rule import (
     BLACK_KING, BLACK_ADVISOR, BLACK_ELEPHANT, BLACK_KNIGHT, BLACK_ROOK, BLACK_CANNON, BLACK_PAWN,
     RED_KING, RED_ADVISOR, RED_ELEPHANT, RED_KNIGHT, RED_ROOK, RED_CANNON, RED_PAWN
 )
+from ..resources import resource_path
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,8 @@ class PikafishAI:
 
     def _get_engine_path(self):
         # 基于本模块文件定位引擎目录（相对路径，跨系统/跨安装位置均可用）
-        base_dir = os.path.normpath(os.path.join(os.path.dirname(__file__), '../../engine'))
+        # 打包后由 resource_path 解析到临时解压目录
+        base_dir = resource_path('engine')
 
         candidates = []
         if sys.platform == 'darwin':
@@ -137,10 +139,9 @@ class PikafishAI:
             return False
 
         # 计算 NNUE 权重路径（搜索需要加载权重，否则同样可能崩溃）
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-        nnue_path = os.path.join(project_root, 'engine', 'pikafish.nnue')
+        nnue_path = resource_path(os.path.join('engine', 'pikafish.nnue'))
         if not os.path.exists(nnue_path):
-            nnue_path = os.path.join(project_root, 'pikafish.nnue')
+            nnue_path = resource_path('pikafish.nnue')
         nnue_ok = os.path.exists(nnue_path)
 
         def send(s):
@@ -254,11 +255,10 @@ class PikafishAI:
                     time.sleep(0.05)
                 
                 if self.initialized:
-                    # 获取项目根目录
-                    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-                    nnue_path = os.path.join(project_root, 'engine', 'pikafish.nnue')
+                    # 获取 NNUE 权重路径
+                    nnue_path = resource_path(os.path.join('engine', 'pikafish.nnue'))
                     if not os.path.exists(nnue_path):
-                        nnue_path = os.path.join(project_root, 'pikafish.nnue')
+                        nnue_path = resource_path('pikafish.nnue')
                     if os.path.exists(nnue_path):
                         nnue_path = os.path.abspath(nnue_path).replace('\\', '/')
                         self._send_command(f'setoption name EvalFile value {nnue_path}')

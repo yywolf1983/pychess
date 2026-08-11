@@ -6,6 +6,7 @@ from typing import List
 from ..game.board import ChessInfo
 from ..game.pos import Pos
 from ..game.rule import is_red
+from ..resources import resource_path
 
 try:
     from PIL import Image
@@ -109,7 +110,7 @@ class ChessView:
     def _load_images(self):
         images = {}
         
-        resources_dir = os.path.join(os.path.dirname(__file__), '../../src/resources')
+        resources_dir = resource_path('src/resources')
         
         def load_image_safe(path):
             if not os.path.exists(path):
@@ -277,11 +278,10 @@ class ChessView:
 
     def _resolve_coord_font(self):
         """解析一个含中文数字的字体（优先级：项目打包字体 -> 系统常见中文字体）。"""
-        here = os.path.dirname(__file__)
         candidates = [
             # 项目指定手写体（毛笔风格，优先用于棋盘坐标与棋子文字）
-            os.path.join(here, '..', '..', 'config', 'MaShanZheng-Regular.ttf'),
-            os.path.join(here, '..', '..', 'src', 'resources', 'fonts', 'cjk.ttf'),
+            resource_path('config/MaShanZheng-Regular.ttf'),
+            resource_path('src/resources/fonts/cjk.ttf'),
             'C:/Windows/Fonts/msyh.ttc',
             'C:/Windows/Fonts/simhei.ttf',
             '/System/Library/Fonts/PingFang.ttc',

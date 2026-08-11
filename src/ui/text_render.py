@@ -12,6 +12,7 @@ from ..game.move import Move
 from ..game.rule import is_king_danger
 from ..ai.pikafish import PikafishAI
 from .chess_view import ChessView
+from ..resources import resource_path
 
 
 class TextRenderMixin:
@@ -22,13 +23,11 @@ class TextRenderMixin:
         因此无论项目放在哪个系统、哪个目录下都能稳定找到；
         其次回退到各系统常见的中文字体绝对路径。找不到则返回 None。
         """
-        here = os.path.dirname(os.path.abspath(__file__))
         candidates = [
             # 0) 项目指定手写体（毛笔风格，优先使用）
-            os.path.join(here, '..', '..', 'config', 'MaShanZheng-Regular.ttf'),
+            resource_path('config/MaShanZheng-Regular.ttf'),
             # 1) 随项目打包（相对路径，跨系统保证可用）
-            os.path.join(here, '..', 'resources', 'fonts', 'cjk.ttf'),
-            os.path.join(here, '..', '..', 'src', 'resources', 'fonts', 'cjk.ttf'),
+            resource_path('src/resources/fonts/cjk.ttf'),
             # 2) Windows 常见中文字体
             'C:/Windows/Fonts/msyh.ttc',
             'C:/Windows/Fonts/simhei.ttf',
