@@ -10,6 +10,15 @@ from .rule import (
 
 import json
 import os
+import sys
+
+# 可写配置目录：始终位于「程序运行目录」下的 config/。
+# - 开发时：项目根目录/config
+# - 打包后（--onefile）：exe 所在目录/config（而非只读的临时解压目录 _MEIPASS）
+def _user_config_dir() -> str:
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.join(exe_dir, 'config')
+
 
 class Setting:
     def __init__(self):
@@ -24,7 +33,7 @@ class Setting:
         self.thinking_time = 3
     
     def save(self):
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config')
+        config_dir = _user_config_dir()
         os.makedirs(config_dir, exist_ok=True)
         config_path = os.path.join(config_dir, 'settings.json')
         
@@ -44,9 +53,20 @@ class Setting:
             json.dump(data, f, indent=2)
     
     def load(self):
-        config_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'config')
+        # 优先读取用户配置目录（可写）
+        config_dir = _user_config_dir()
         config_path = os.path.join(config_dir, 'settings.json')
-        
+
+        # 若用户目录尚无配置，回退到打包资源里的默认模板（只读，不写回）
+        if not os.path.exists(config_path):
+            try:
+                from ..resources import resource_path
+                bundled = resource_path(os.path.join('config', 'settings.json'))
+                if os.path.exists(bundled):
+                    config_path = bundled
+            except Exception:
+                pass
+
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
