@@ -19,30 +19,35 @@ class ChessView:
     def __init__(self, screen: pygame.Surface, chess_info: ChessInfo):
         self.screen = screen
         self.chess_info = chess_info
-        # 以棋盘图片【实测真实网格线】为基准对齐（图片网格并非均匀间距）。
-        # 用实测网格线数组 + 线性插值定位，棋子精确落在图片真实格点，消除累积错位。
         self.scale = 0.85
-        # 实测内部网格线（原图像素坐标）
-        self.gx_raw = [33, 125, 208, 291, 374, 457, 540, 623, 706]
-        self.gy_raw = [70, 163, 245, 328, 411, 494, 577, 661, 743, 827]
+        # 坐标体系必须与 Android 版 ChessView 完全一致，否则棋子会在 py 中整体偏移。
+        # Android 采用「设计单位」线性公式（而非读取图片黑线像素）：
+        #   源图单位 755×938，GRID=84(每格)、HALF=44(首列 x 偏移)、BOARD_TOP=44(首行基准)
+        #   列 j 源 x = j*GRID + HALF            → 44,128,...,716
+        #   行 r 源 y = BOARD_TOP + r*GRID + HALF → 88,172,...,844
+        # 之前 py 用"图片黑线像素检测"得到 44..707 / 79..826，与设计公式存在约 9px 偏差，
+        # 正是「位置在 py 中偏差」的根因。此处直接沿用设计公式，保证与 Android 重合。
+        self.GRID = 84.0
+        self.HALF = 44.0
+        self.BOARD_TOP = 44.0
+        self.SRC_W = 755.0
+        self.SRC_H = 938.0
+        self.gx_raw = [self.HALF + j * self.GRID for j in range(9)]
+        self.gy_raw = [self.BOARD_TOP + self.HALF + r * self.GRID for r in range(10)]
         self.padding_left = self.gx_raw[0] * self.scale
-        # 棋盘图上下各留 10px 空白：网格实际只占 board_height - 2*board_padding，
-        # 行坐标需扣除顶部留白，故 padding_top 不再取首行 raw 坐标，而取该留白。
-        self.board_padding = 10 * self.scale
+        # 顶部留白（图内首条横线之前的空白带），仅用于九宫斜线等参考，不影响棋子定位
+        self.board_padding = self.gy_raw[0] * self.scale
         self.padding_top = self.board_padding
-        # 棋子尺寸随棋盘等比缩放（保持与格距比例，不重叠），所有棋子规则统一
-        self.piece_size = int(80 * self.scale)
-        self.board_width = int(750 * self.scale)
-        self.board_height = int((909 + 2 * 10) * self.scale)
-        # 所有棋子相对格线整体下移若干源像素（随缩放联动），高亮/提示线同步下移。
-        self.piece_offset_y = 10 * self.scale
-        # 棋子水平方向回到格线中心，不做整体右移。
+        # 棋子边长按设计单位 PIECE=90（略大于格距 84，视觉更饱满），与 Android 一致
+        self.piece_size = int(86 * self.scale)
+        self.board_width = int(self.SRC_W * self.scale)
+        self.board_height = int(self.SRC_H * self.scale)
+        # 不再使用任何手调偏移：棋子中心严格对齐设计单位交点（Android 版做法）。
+        self.piece_offset_y = 0
         self.piece_offset_x = 0
-        # 仅最左侧一列（x=0）向右一点点，避免贴边（其他列不动）。
-        self.first_col_offset_x = int(6 * self.scale)
-        # 黑方第一行（y=9，车马相）单独向下一点点，修正其略偏上的视觉。
-        self.black_first_row_offset_y = int(5 * self.scale)
-        # 棋子以【中心】对齐图片格线交点（象棋棋子落在线点中心）
+        self.first_col_offset_x = 0
+        self.black_first_row_offset_y = 0
+        # 棋子以【中心】对齐格点交点（象棋棋子落在线点中心）
         self._piece_cx_off = -self.piece_size // 2
         self._piece_cy_off = -self.piece_size // 2
 
@@ -337,7 +342,7 @@ class ChessView:
         # 参考 ChineseChess：坐标文字锚定在同一格点换算体系，黑方在顶部带、红方在底部带，
         # 红黑对称、无特例（RED_UP=0）；band 为固定边带偏移（对应参考设计单位的 30~46）。
         # 与棋子共用同一整体平移（piece_offset_x/y），保证坐标与棋子中心处于同一体系。
-        band = int(46 * self.scale)
+        band = int(56 * self.scale)
         top_y_black = int(self._gy(0) + self.piece_offset_y) - band
         bottom_y_black = int(self._gy(9) + self.piece_offset_y) + band
         top_y_red = top_y_black
