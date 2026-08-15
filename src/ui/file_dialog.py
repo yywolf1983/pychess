@@ -1,8 +1,17 @@
 """跨平台文件对话框（纯 pygame 实现，不依赖 tkinter）。
 
-用于在不同操作系统 / 打包环境下一致地「打开」与「保存」棋谱(.pgn)，
-支持浏览任意目录、进入子目录、返回上级、跳到主目录，以及自定义文件名。
+用于在不同操作系统 / 打包环境下一致地「打开」与「保存」文件：
+
+- kind='pgn'  ：打开 / 保存棋谱(.pgn)，支持浏览任意目录、进入子目录、
+                返回上级、跳到主目录，以及自定义文件名。
+- kind='image'：打开棋局图片，复用同一套纯 pygame 界面，仅过滤图片扩展名，
+                不依赖系统原生选择框（避免 macOS 上 tkinter/Tk 与 pygame 的
+                SDL2 冲突崩溃，也保证 Windows/Linux/打包后表现一致）。
+
+所有逻辑均纯 pygame，无任何系统文件对话框调用。
 """
+
+_IMAGE_EXTS = ('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.webp')
 
 import os
 import time
@@ -16,8 +25,13 @@ class FileDialogMixin:
     # ------------------------------------------------------------------ #
     # 公开入口
     # ------------------------------------------------------------------ #
-    def _open_file_dialog(self, mode):
-        """打开文件对话框。mode 为 'open'（打开棋谱）或 'save'（保存棋谱）。"""
+    def _open_file_dialog(self, mode, kind='pgn'):
+        """打开文件对话框。
+
+        mode 为 'open'（打开文件）或 'save'（保存棋谱）；
+        kind 为 'pgn'（棋谱）或 'image'（棋局图片），仅影响 open 模式的
+        扩展名过滤与确认后的回调分派。
+        """
         init_dir = self.save_dir
         if not os.path.isdir(init_dir):
             try:
@@ -32,6 +46,7 @@ class FileDialogMixin:
 
         self.file_dialog = {
             'mode': mode,
+            'kind': kind,
             'dir': init_dir,
             'entries': [],
             'selected': None,           # open 模式选中的文件名
@@ -67,6 +82,9 @@ class FileDialogMixin:
 
     def _scan_dir(self, path):
         dirs, files = [], []
+        fd = self.file_dialog
+        open_mode = fd['mode'] == 'open'
+        kind = fd.get('kind', 'pgn')
         try:
             names = os.listdir(path)
         except OSError:
@@ -79,11 +97,15 @@ class FileDialogMixin:
                         continue
                     dirs.append({'name': name, 'is_dir': True, 'path': full, 'meta': ''})
                 else:
-                    if self.file_dialog['mode'] == 'open' and \
-                            not name.lower().endswith('.pgn'):
-                        continue
+                    low = name.lower()
+                    if open_mode:
+                        if kind == 'image':
+                            if not low.endswith(_IMAGE_EXTS):
+                                continue
+                        elif not low.endswith('.pgn'):
+                            continue
                     meta = ''
-                    if name.lower().endswith('.pgn'):
+                    if kind == 'pgn' and low.endswith('.pgn'):
                         try:
                             with open(full, 'r', encoding='utf-8') as f:
                                 txt = f.read()
@@ -183,7 +205,12 @@ class FileDialogMixin:
         pygame.draw.rect(self.screen, (90, 120, 160), card, width=1, border_radius=14)
 
         # 标题
-        title = '打开棋谱' if mode == 'open' else '保存棋谱'
+        if mode == 'save':
+            title = '保存棋谱'
+        elif fd.get('kind') == 'image':
+            title = '打开棋局图片'
+        else:
+            title = '打开棋谱'
         self._draw_text(title, card.centerx, card.y + 28, 'large', (235, 240, 248))
         # 关闭按钮
         cr = layout['close_rect']
@@ -362,9 +389,11 @@ class FileDialogMixin:
         if not fd:
             return
         mode = fd['mode']
+        kind = fd.get('kind', 'pgn')
         name = (fd['filename'].strip() if mode == 'save' else (fd['selected'] or ''))
         if not name:
-            self.show_toast('请输入文件名' if mode == 'save' else '请选择棋谱文件')
+            self.show_toast('请输入文件名' if mode == 'save' else
+                            ('请选择图片文件' if kind == 'image' else '请选择棋谱文件'))
             return
         path = os.path.join(fd['dir'], name)
         if mode == 'save' and not path.lower().endswith('.pgn'):
@@ -372,5 +401,7 @@ class FileDialogMixin:
         self._close_file_dialog()
         if mode == 'save':
             self._save_game_to(path)
+        elif kind == 'image':
+            self._import_image_confirm(path)
         else:
             self._apply_pgn_data(path)
