@@ -213,8 +213,16 @@ def pid_to_class(pid: int) -> int:
 
 class ChessRecognizer:
     def __init__(self):
-        self.pose = ort.InferenceSession(_POSE_MODEL, providers=['CPUExecutionProvider'])
-        self.cls = ort.InferenceSession(_LAYOUT_MODEL, providers=['CPUExecutionProvider'])
+        try:
+            self.pose = ort.InferenceSession(_POSE_MODEL, providers=['CPUExecutionProvider'])
+            self.cls = ort.InferenceSession(_LAYOUT_MODEL, providers=['CPUExecutionProvider'])
+        except Exception as e:
+            # Linux 常见：onnxruntime 缺失 / glibc 过旧 / 模型路径未随包打包
+            raise RuntimeError(
+                '加载识别模型失败：' + str(e) +
+                '。请确认：1) 已安装 onnxruntime（pip install onnxruntime）；'
+                '2) Linux 下 glibc 版本满足要求；'
+                '3) 打包后模型文件(src/models/*.onnx)已正确包含。')
         self._pose_in = self.pose.get_inputs()[0].name
         self._cls_in = self.cls.get_inputs()[0].name
         self._pose_outs = [o.name for o in self.pose.get_outputs()]

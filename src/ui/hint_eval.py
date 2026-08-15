@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import pygame
 import threading
@@ -280,9 +281,12 @@ class HintEvalMixin:
 
     def _import_image_confirm(self, path):
         """图片已选定：识别棋局并载入棋盘，进入摆棋可编辑态。"""
+        import traceback
         try:
             from src.ui.recognizer import ChessRecognizer
         except Exception as e:
+            print('[import_image] 导入 recognizer 失败:', file=sys.stderr)
+            traceback.print_exc()
             self.show_toast('识别模块未就绪: ' + str(e))
             return
 
@@ -291,6 +295,8 @@ class HintEvalMixin:
             recognizer = ChessRecognizer()
             board = recognizer.recognize(path)  # 10x9 棋子 ID 矩阵
         except Exception as e:
+            print('[import_image] 识别失败:', file=sys.stderr)
+            traceback.print_exc()
             self.show_toast('识别失败: ' + str(e))
             return
 
