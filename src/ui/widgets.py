@@ -69,12 +69,15 @@ class WidgetsMixin:
             self.screen.blit(soft, (rect.x, rect.y))
             pygame.draw.rect(self.screen, (*glow_col, int(70 + 90 * p)), rect, width=2, border_radius=12)
         if icon and icon_only:
-            # 仅图标按钮：图标居中偏上，下方附小号文字说明，保证可辨识
-            self._draw_button_glyph(rect, icon, glyph_color, rect.centerx, rect.centery - 12)
+            # 仅图标按钮：图标 + 下方小字整体在按钮内垂直居中
             cap = self._text_surface(label, 'tiny', label_color)
+            cap_h = cap.get_height() if cap else 0
+            gap = 5
+            glyph_y = rect.centery - (cap_h + gap) // 2
+            self._draw_button_glyph(rect, icon, glyph_color, rect.centerx, glyph_y)
             if cap:
                 self.screen.blit(cap, (rect.centerx - cap.get_width() // 2,
-                                       rect.bottom - cap.get_height() - 8))
+                                       glyph_y + 14 + gap))
             return
         surf = self._text_surface(label, font_size, label_color)
         if icon and not icon_only:
@@ -253,34 +256,31 @@ class WidgetsMixin:
             self._draw_computer_glyph(cx + 7, cy, color, sc)
 
     def _draw_undo_glyph(self, cx, cy, color, w=3):
-        """撤销图标：左向箭头 + 顶部回弯弧（标准 ↶）。"""
+        """撤销图标：逆时针圆环箭头（通用 ↺ 撤销语义），居中、清晰。"""
         cx = int(cx)
         cy = int(cy)
-        tipx, tipy = int(cx - 12), cy
-        r = 12
-        # 顶部弧：从右上方经顶点回到左上方
-        pygame.draw.arc(self.screen, color,
-                        (int(cx - r), int(cy - r), 2 * r, 2 * r),
-                        math.radians(-18), math.radians(198), w)
-        ex = int(cx + r * math.cos(math.radians(198)))
-        ey = int(cy + r * math.sin(math.radians(198)))
-        pygame.draw.line(self.screen, color, (ex, ey), (tipx, tipy), w)
-        a = 8
-        pygame.draw.polygon(self.screen, color,
-                            [(tipx, tipy), (int(tipx + a), int(tipy - a * 0.62)),
-                             (int(tipx + a), int(tipy + a * 0.62))])
+        self._draw_circular_arrow(cx, cy, 11, 178, 250, True, color, w, 8)
 
     def _draw_flip_glyph(self, cx, cy, color, w=3):
-        """反转棋盘图标：上下双向箭头（⇅），明确「翻转/对调」语义。"""
+        """反转棋盘图标：圆角矩形（棋盘）内上下对称竖直双箭头，表达「上下交换翻转」。"""
         cx = int(cx)
         cy = int(cy)
-        span = 13
-        a = 7
-        pygame.draw.line(self.screen, color, (cx, int(cy - 4)), (cx, int(cy + 4)), w)
-        pygame.draw.line(self.screen, color, (int(cx - a), int(cy - 4)), (cx, int(cy - span)), w)
-        pygame.draw.line(self.screen, color, (int(cx + a), int(cy - 4)), (cx, int(cy - span)), w)
-        pygame.draw.line(self.screen, color, (int(cx - a), int(cy + 4)), (cx, int(cy + span)), w)
-        pygame.draw.line(self.screen, color, (int(cx + a), int(cy + 4)), (cx, int(cy + span)), w)
+        # 棋盘外框
+        bw, bh = 26, 22
+        brect = pygame.Rect(int(cx - bw / 2), int(cy - bh / 2), bw, bh)
+        pygame.draw.rect(self.screen, color, brect, width=w, border_radius=5)
+        # 内部上下对称双箭头（上箭头指下、下箭头指上，居中清晰）
+        top_y = int(cy - bh / 2 + 4)
+        bot_y = int(cy + bh / 2 - 4)
+        mid_gap = 4
+        # 上段：从顶部附近向下到中心上方
+        pygame.draw.line(self.screen, color, (cx, top_y), (cx, int(cy - mid_gap)), w)
+        # 下段：从底部附近向上到中心下方
+        pygame.draw.line(self.screen, color, (cx, bot_y), (cx, int(cy + mid_gap)), w)
+        # 上箭头头部（指向下，靠近中心）
+        self._arrow_head(cx, int(cy - mid_gap), 0, 1, 1, 0, color, 6)
+        # 下箭头头部（指向上，靠近中心）
+        self._arrow_head(cx, int(cy + mid_gap), 0, -1, 1, 0, color, 6)
 
 
     def _draw_card(self, rect, fill=(255, 255, 255)):

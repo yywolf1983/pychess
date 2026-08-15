@@ -48,11 +48,12 @@ class SidebarMixin:
         pygame.draw.line(self.screen, (64, 82, 108),
                          (mode_btn['rect'].x - 16, 18), (mode_btn['rect'].x - 16, self.menu_h - 18), 1)
         # 品牌（窗口最右侧）—— 品牌估算宽度/字号随 ui_scale 缩放，避免覆盖菜单按钮
-        brand_w = int(170 * self.ui_scale)
-        bx = self.window_width - brand_w - 16
         by = self.menu_h // 2
         brand_font = 'medium' if self.ui_scale > 0.8 else ('small' if self.ui_scale > 0.6 else 'xsmall')
-        self._draw_text_left('中国象棋', bx + 4, by, brand_font, (245, 212, 132))
+        # 标题定位：菜单按钮右界 与 窗口右边缘 之间的剩余空间内水平居中（不再贴最右）
+        menu_right = max(b['rect'].right for b in self.menu_buttons) if self.menu_buttons else 0
+        title_x = (menu_right + self.window_width) // 2
+        self._draw_text('中国象棋', title_x, by, brand_font, (245, 212, 132))
 
 
     def _draw_mode_menu(self):
@@ -184,8 +185,8 @@ class SidebarMixin:
         status_h = self._status_card_height()
         # 空间不足时压缩状态卡，保证至少保留一定高度
         status_h = max(160, min(status_h, avail_bottom - sb_top))
-        status_card = pygame.Rect(sb_x + 16, sb_top,
-                                  self.sidebar_width - 32, avail_bottom - sb_top)
+        status_card = pygame.Rect(sb_x + 6, sb_top,
+                                  self.sidebar_width - 16, avail_bottom - sb_top)
         self._draw_card(status_card, (248, 250, 252))
         self._draw_status_card(status_card)
 
@@ -238,8 +239,8 @@ class SidebarMixin:
         return h
 
     def _draw_status_card(self, card):
-        cx = card.x + 18
-        cw = card.width - 36
+        cx = card.x + 8
+        cw = card.width - 16
         cy = card.y + 22
         # 标题 + 强调下划线
         self._draw_text('对局状态', cx + cw // 2, cy, 'small', (70, 82, 104))
@@ -377,8 +378,8 @@ class SidebarMixin:
 
     def _draw_move_list(self, card):
         self._ensure_move_strs()
-        cx = card.x + 16
-        cw = card.width - 32
+        cx = card.x + 4
+        cw = card.width - 8
         # 标题
         self._draw_text('棋谱', cx + cw // 2, card.y + 18, 'small', (70, 82, 104))
         pygame.draw.rect(self.screen, (96, 156, 236),

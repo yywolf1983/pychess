@@ -66,15 +66,14 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         
         # 整体 UI 缩放因子：棋盘(ChessView.scale)与菜单/底栏统一乘此系数，
         # 保证整体等比缩小。当前 0.70 → 窗口总高 < 900。
-        self.ui_scale = 0.68
+        self.ui_scale = 0.66
         # 棋盘尺寸交由 ChessView 计算（含上下各 10px 留白），此处先取初值占位，
         # 实例化后会被 chess_view.board_width / board_height 覆盖，保证两者一致。
-        # 初值占位（会被 ChessView 回写覆盖），此处加 piece_size//2 余量与 ChessView 一致
-        ps = int(86 * self.ui_scale) // 2  # 与 ChessView.piece_size//2 对应
-        self.board_width = int(755 * self.ui_scale) + ps
-        self.board_height = int(938 * self.ui_scale) + ps  # 与 ChessView 中 chessboard.png 真实高度一致（回写时以 ChessView 为准）
-        # 侧栏宽度：在保证文字可读的前提下尽量不挤压棋盘（0.95 太宽会盖住棋盘右侧）
-        self.sidebar_width = int(250 * 0.88)
+        # 初值占位（会被 ChessView 回写覆盖），窗口尺寸最终以 ChessView 的紧凑计算为准
+        self.board_width = int(755 * self.ui_scale)
+        self.board_height = int(938 * self.ui_scale)  # 与 ChessView 中 chessboard.png 真实高度一致（回写时以 ChessView 为准）
+        # 侧栏宽度：在保证文字可读的前提下尽量紧凑（窄侧栏，贴近棋盘）
+        self.sidebar_width = int(250 * 0.78)
         # 顶部菜单栏（新局/加载/保存/设置/对战模式）
         self.menu_h = int(54 * self.ui_scale)
         # 顶部不再保留浮动评分条；评分等一并归入右侧「对局状态」卡片
@@ -234,12 +233,13 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             ('mode', '模式', None, 'mode'),
         ]
         k = self.ui_scale
-        pad = int(10 * k)
-        gap = int(8 * k)
+        pad = int(8 * k)
+        gap = int(5 * k)
         n = len(menu_items)
         # 品牌移到窗口最右侧，菜单按钮利用品牌左侧的整段空间，使每个按钮适度加宽
         # 品牌字号随 ui_scale 缩小，估算宽度同步缩放，避免按钮区计算过宽导致重叠/溢出
-        brand_w_est = int(170 * k)
+        # brand_w_est 增大：按钮区右边界左移，头部每个按钮长度缩短
+        brand_w_est = int(280 * k)
         brand_x = self.window_width - brand_w_est - int(16 * k)
         menu_right = brand_x - int(16 * k)
         bw = (menu_right - pad - (n - 1) * gap) / n
@@ -256,12 +256,13 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             })
 
         # ===== 侧栏大按钮：摆棋 / 上一步 / 下一步 / 悔棋 / 支招 =====
-        sx = self.board_width + 20
-        sw = self.sidebar_width - 40
-        sy0 = self.menu_h + 16   # 菜单栏已含品牌，侧栏顶部直接放置按钮
-        big_h = 58
-        big_gap = 14
-        nav_w = (sw - 12) // 2
+        sx = self.board_width + 3
+        sw = self.sidebar_width - 16
+        sy0 = self.menu_h + 10   # 菜单栏已含品牌，侧栏顶部直接放置按钮
+        big_h = 48
+        big_gap = 8
+        nav_w = (sw - 2) // 2
+        nav_gap = sw - 2 * nav_w   # 同行两列之间的水平间距
         self.side_buttons = []
         # 摆棋（整行）
         self.side_buttons.append({
@@ -275,7 +276,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             'key': 'prev', 'label': '上一步', 'icon': 'prev', 'icon_only': True
         })
         self.side_buttons.append({
-            'rect': pygame.Rect(sx + nav_w + 12, nav_y, nav_w, big_h),
+            'rect': pygame.Rect(sx + nav_w + nav_gap, nav_y, nav_w, big_h),
             'key': 'next', 'label': '下一步', 'icon': 'next', 'icon_only': True
         })
         # 悔棋 / 翻转棋盘（同一行，仅图标）
@@ -285,7 +286,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             'key': 'undo', 'label': '悔棋', 'icon': 'undo', 'icon_only': True
         })
         self.side_buttons.append({
-            'rect': pygame.Rect(sx + nav_w + 12, undo_y, nav_w, big_h),
+            'rect': pygame.Rect(sx + nav_w + nav_gap, undo_y, nav_w, big_h),
             'key': 'flip', 'label': '翻转棋盘', 'icon': 'flip', 'icon_only': True
         })
         # 支招（整行）

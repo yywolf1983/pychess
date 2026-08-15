@@ -19,7 +19,7 @@ class ChessView:
     def __init__(self, screen: pygame.Surface, chess_info: ChessInfo):
         self.screen = screen
         self.chess_info = chess_info
-        self.scale = 0.68
+        self.scale = 0.66
         # 坐标体系必须与 Android 版 ChessView 完全一致，否则棋子会在 py 中整体偏移。
         # Android 采用「设计单位」线性公式（而非读取图片黑线像素）：
         #   源图单位 755×938，GRID=84(每格)、HALF=44(首列 x 偏移)、BOARD_TOP=44(首行基准)
@@ -40,12 +40,19 @@ class ChessView:
         self.padding_top = self.board_padding
         # 棋子边长按设计单位 PIECE=90（略大于格距 84，视觉更饱满），与 Android 一致
         self.piece_size = int(86 * self.scale)
-        # 底图严格按 scale 缩放（保证与元素定位同一比例），容器 board_width/height
-        # 在此基础上各加半颗棋子余量，仅用于容纳最边缘棋子/坐标，不改变缩放比例
+        # 坐标文字边带偏移（与 _draw_coordinates 共用，避免两处不一致）
+        self.coord_band = int(56 * self.scale)
+        # 底图严格按 scale 缩放（保证与元素定位同一比例）
         self._board_draw_w = int(self.SRC_W * self.scale)
         self._board_draw_h = int(self.SRC_H * self.scale)
-        self.board_width = self._board_draw_w + self.piece_size // 2
-        self.board_height = self._board_draw_h + self.piece_size // 2
+        # 紧凑排版：board 尺寸恰好包裹「最右棋子右缘 / 底部坐标下缘」，仅留 1px 极窄边距，
+        # 不再用固定半棋子余量，消除棋盘四周空白。
+        right_edge = self.gx_raw[8] * self.scale + self.piece_size // 2
+        # 底部坐标文字中心在 gy_raw[9]*scale + coord_band（见 _draw_coordinates），
+        # 其下缘再留半枚棋子高即包裹；coord_band 之外不再额外余量。
+        bot_edge = self.gy_raw[9] * self.scale + self.coord_band + self.piece_size // 2
+        self.board_width = int(max(self._board_draw_w, right_edge)) + 1
+        self.board_height = int(max(self._board_draw_h, bot_edge)) + 1
         # 不再使用任何手调偏移：棋子中心严格对齐设计单位交点（Android 版做法）。
         self.piece_offset_y = 0
         self.piece_offset_x = 0
@@ -350,7 +357,7 @@ class ChessView:
         # 参考 ChineseChess：坐标文字锚定在同一格点换算体系，黑方在顶部带、红方在底部带，
         # 红黑对称、无特例（RED_UP=0）；band 为固定边带偏移（对应参考设计单位的 30~46）。
         # 与棋子共用同一整体平移（piece_offset_x/y），保证坐标与棋子中心处于同一体系。
-        band = int(56 * self.scale)
+        band = self.coord_band
         top_y_black = int(self._gy(0) + self.piece_offset_y) - band + self._nudge_y
         bottom_y_black = int(self._gy(9) + self.piece_offset_y) + band + self._nudge_y
         top_y_red = top_y_black
