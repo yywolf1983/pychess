@@ -419,6 +419,14 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                         self._edit_dragging = True
                         self._edit_drag_offset = y - thumb.y
                     return
+                # 摆棋面板内的「导入图片」按钮
+                img_rect = getattr(self, 'edit_ui', {}).get('import_image')
+                if img_rect is not None:
+                    hit = pygame.Rect(img_rect.x, img_rect.y - self.edit_scroll,
+                                      img_rect.width, img_rect.height)
+                    if hit.collidepoint(x, y):
+                        self.handle_action('import_image')
+                        return
                 # 摆棋面板：点中棋子即选中（点击式摆棋：再点棋盘放置 / 移动）
                 item = self._palette_item_at(x, y)
                 if item and item[0] == 'piece':

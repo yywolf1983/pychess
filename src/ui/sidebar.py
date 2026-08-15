@@ -162,7 +162,7 @@ class SidebarMixin:
                 active = False
                 spinner = False
                 pulse = False
-            # 忙碌态（加载中）除「支招」「翻转」外一律置灰禁用，与 ChineseChess 按钮置灰逻辑一致
+            # 忙碌态（加载中）除「支招」「翻转」「导入图片」外一律置灰禁用，与 ChineseChess 按钮置灰逻辑一致
             btn_disabled = self._controls_disabled and btn['key'] not in ('hint', 'flip')
             # 导航按钮（上一步/下一步/悔棋）另按「棋谱加载 / 偏离」状态置灰：
             #  - 未加载棋谱：上一步/下一步置灰，悔棋可用

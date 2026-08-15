@@ -49,6 +49,8 @@ class HintEvalMixin:
         elif action == 'flip':
             # 翻转棋盘视角（红/黑上下对调）；棋子与文字保持正向
             self.chess_view.toggle_flip()
+        elif action == 'import_image':
+            self._import_image()
 
 
     def on_hint_button(self):
@@ -270,6 +272,129 @@ class HintEvalMixin:
                                  'to': (m.to_pos.x, m.to_pos.y),
                                  'label': self.chess_info.suggest_move_labels[i]})
         self.hint_selected = -1
+
+    def _import_image(self):
+        """从图片识别棋局：弹出文件选择框 -> 识别 -> 载入棋盘并进入摆棋编辑态。"""
+        import sys
+        print('[import_image] 触发', file=sys.stderr)
+        try:
+            from src.ui.recognizer import ChessRecognizer
+        except Exception as e:
+            self.show_toast('识别模块未就绪: ' + str(e))
+            return
+
+        # 用 macOS 原生文件选择框（osascript），避免 tkinter/Tk 与 pygame 的 SDL 冲突崩溃
+        path = self._pick_image_path()
+        print('[import_image] 选择结果:', repr(path), file=sys.stderr)
+        if not path:
+            return
+
+        self.show_toast('正在识别棋局…')
+        try:
+            recognizer = ChessRecognizer()
+            board = recognizer.recognize(path)  # 10x9 棋子 ID 矩阵
+        except Exception as e:
+            self.show_toast('识别失败: ' + str(e))
+            return
+
+        # 将识别结果写入实时棋盘
+        self.chess_info.piece = [list(row) for row in board]
+        self.chess_info.move_history = []
+        self.chess_info.base_piece = [list(row) for row in board]
+        self.chess_info.base_red_go = self.chess_info.is_red_go
+        self.board_snapshots = [[list(row) for row in board]]
+        # 关闭浏览/棋谱加载态
+        self.browse_index = None
+        self.notation_loaded = False
+        self._notation_moves = []
+        self._notation_snapshots = []
+        self._clear_hint()
+
+        # 进入摆棋编辑态，让用户可以核对/微调识别结果
+        if not self.editing:
+            self.editing = True
+            self.edit_piece = None
+            self._edit_pickup_cell = None
+            self.edit_history = []
+            self.edit_scroll = 0
+            self.chess_info.select = Pos(-1, -1)
+            self.chess_info.ret = []
+            self.is_ai_thinking = False
+            self.game_mode = 'pvp'
+            self.chess_info.status = 0
+            self.chess_info.is_machine = False
+        self.show_toast('识别完成，已进入摆棋可编辑模式')
+
+    def _pick_image_path(self):
+        """跨平台文件选择框，返回选中图片的 POSIX 路径；取消/失败返回 ''。
+
+        平台策略：
+        - macOS：用原生 osascript 弹框，避免 tkinter/Tk 与 pygame 的 SDL2 冲突崩溃；
+        - Windows / Linux：用 tkinter.filedialog（这两个平台无上述 Cocoa 冲突）。
+        - 若都不可用，回退到 pygame 自绘的简易文件列表框（src/ui/file_dialog.py）。
+        """
+        import sys
+        if sys.platform == 'darwin':
+            path = self._pick_image_macos()
+        else:
+            path = self._pick_image_tk()
+        if not path:
+            # tkinter 在部分环境缺失或初始化失败时的兜底
+            path = self._pick_image_fallback()
+        return path or ''
+
+    def _pick_image_macos(self):
+        import subprocess
+        script = (
+            'set f to choose file of type {"public.image"} '
+            'with prompt "选择棋局图片" '
+            'without invisibles\n'
+            'POSIX path of f'
+        )
+        try:
+            out = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True, text=True, timeout=120)
+        except Exception as e:
+            self.show_toast('无法打开文件框: ' + str(e))
+            return ''
+        if out.returncode == 0:
+            return (out.stdout or '').strip()
+        # 用户取消（macOS 返回 -128）属正常；其它错误给出可见提示，避免“无反映”
+        if out.returncode != -128:
+            self.show_toast('无法打开文件框: ' + (out.stderr.strip() or ('code %d' % out.returncode)))
+        return ''
+
+    def _pick_image_tk(self):
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+        except Exception:
+            return ''
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            path = filedialog.askopenfilename(
+                title='选择棋局图片',
+                filetypes=[('图片', '*.png *.jpg *.jpeg *.bmp *.gif'),
+                           ('所有文件', '*.*')])
+        except Exception:
+            return ''
+        finally:
+            try:
+                root.destroy()
+            except Exception:
+                pass
+        return path or ''
+
+    def _pick_image_fallback(self):
+        """主方案都不可用时的提示（不诱导 macOS 用户走崩溃的 tkinter）。"""
+        import sys
+        if sys.platform == 'darwin':
+            self.show_toast('无法打开系统文件框，请检查系统权限')
+        else:
+            self.show_toast('环境缺少 tkinter，无法打开文件框')
+        return ''
 
 
     def request_eval(self, force=False):

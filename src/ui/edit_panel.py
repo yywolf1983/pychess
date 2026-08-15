@@ -271,9 +271,9 @@ class EditPanelMixin:
         black_palette = [(1, '将'), (2, '士'), (3, '象'), (4, '马'), (5, '车'), (6, '炮'), (7, '卒')]
         red_palette = [(8, '帅'), (9, '仕'), (10, '相'), (11, '马'), (12, '车'), (13, '炮'), (14, '兵')]
         cols = 3
-        gap = 10
+        gap = 6
         cw = (inner_w - (cols - 1) * gap) // cols  # 每格宽
-        ch = 62
+        ch = 46
         img_size = cw - 6
 
         self.edit_ui = {}
@@ -319,12 +319,12 @@ class EditPanelMixin:
             rows = (len(palette) + cols - 1) // cols
             return yy + rows * (ch + gap)
 
-        y = draw_color_rows(black_palette, vp_top + 32)
-        y = draw_color_rows(red_palette, y + 6)
+        y = draw_color_rows(black_palette, vp_top + 28)
+        y = draw_color_rows(red_palette, y + 4)
 
-        # 清空棋盘（无橡皮擦按钮：删除棋子改用“双击棋盘棋子”）
-        base_y = y + 6
-        clear_rect = pygame.Rect(inner_x, base_y, inner_w, ch)
+        # 清空棋盘（整行）
+        clear_y = y + 4
+        clear_rect = pygame.Rect(inner_x, clear_y, inner_w, ch)
         self.edit_ui['clear'] = clear_rect
         draw_y = clear_rect.y - self.edit_scroll
         if not (draw_y + ch < vp_top or draw_y > vp_bottom):
@@ -332,11 +332,19 @@ class EditPanelMixin:
             self._draw_button(surf_rect, '清空棋盘', 'small',
                               base=(120, 70, 70), hover=(150, 86, 86), text_color=(245, 240, 240))
 
-        hint_y = clear_rect.bottom + 16
-        self.edit_ui['hint'] = pygame.Rect(inner_x, hint_y, inner_w, 20)
+        # 导入图片识别棋局（整行，置于清空下方）
+        img_y = clear_y + ch + 6
+        img_rect = pygame.Rect(inner_x, img_y, inner_w, ch)
+        self.edit_ui['import_image'] = img_rect
+        draw_y = img_rect.y - self.edit_scroll
+        if not (draw_y + ch < vp_top or draw_y > vp_bottom):
+            surf_rect = pygame.Rect(img_rect.x, draw_y, img_rect.width, img_rect.height)
+            self._draw_button(surf_rect, '导入图片', 'small',
+                              base=(70, 110, 120), hover=(90, 140, 150), text_color=(245, 240, 240))
 
         # 内容总高度（用于滚动条），并钳制滚动偏移
-        content_bottom = hint_y + 20
+        self.edit_ui['hint'] = pygame.Rect(inner_x, img_y + ch + 6, inner_w, 1)
+        content_bottom = img_y + ch + 12
         self.edit_content_bottom = content_bottom
         max_scroll = max(0, content_bottom - vp_bottom)
         if self.edit_scroll > max_scroll:
