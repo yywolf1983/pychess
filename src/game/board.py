@@ -12,12 +12,16 @@ import json
 import os
 import sys
 
-# 可写配置目录：始终位于「程序运行目录」下的 config/。
-# - 开发时：项目根目录/config
-# - 打包后（--onefile）：exe 所在目录/config（而非只读的临时解压目录 _MEIPASS）
+# 可写配置目录（跨平台、可写、打包安全）：
+# - 开发态：项目根目录下的 config/（与 bundled 资源同目录）
+# - 打包态(--onefile)：exe 所在目录下的 config/（_MEIPASS 是只读临时目录，不能用）
 def _user_config_dir() -> str:
-    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
-    return os.path.join(exe_dir, 'config')
+    if getattr(sys, '_MEIPASS', None):
+        base = os.path.dirname(os.path.abspath(sys.executable))
+    else:
+        # 本文件位于 <root>/src/game/board.py，上两级即项目根目录
+        base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    return os.path.join(base, 'config')
 
 
 class Setting:

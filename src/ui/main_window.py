@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 import pygame
 import threading
@@ -138,9 +139,14 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self._notation_moves = []      # 已加载棋谱的着法序列 [(fx,fy,tx,ty), ...]
         self._notation_snapshots = []  # 已加载棋谱的完整逐步快照（偏离后悔棋恢复用）
 
-        # 棋谱默认存放目录：项目根目录下的 saves/（相对地址，便于随仓库迁移）
-        self.save_dir = os.path.normpath(os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), '..', 'saves'))
+        # 棋谱默认存放目录（跨平台、可写、打包安全）：
+        # - 开发态：项目根目录下的 saves/（便于随仓库迁移）
+        # - 打包态(--onefile)：exe 所在目录下的 saves/（_MEIPASS 是只读临时目录，不能用）
+        if getattr(sys, '_MEIPASS', None):
+            base = os.path.dirname(os.path.abspath(sys.executable))
+        else:
+            base = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        self.save_dir = os.path.normpath(os.path.join(base, 'saves'))
         self.file_dialog = None    # 跨平台文件对话框（打开/保存棋谱）
 
         self.mouse_pos = (0, 0)

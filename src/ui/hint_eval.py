@@ -328,19 +328,26 @@ class HintEvalMixin:
     def _pick_image_path(self):
         """跨平台文件选择框，返回选中图片的 POSIX 路径；取消/失败返回 ''。
 
-        平台策略：
-        - macOS：用原生 osascript 弹框，避免 tkinter/Tk 与 pygame 的 SDL2 冲突崩溃；
-        - Windows / Linux：用 tkinter.filedialog（这两个平台无上述 Cocoa 冲突）。
-        - 若都不可用，回退到 pygame 自绘的简易文件列表框（src/ui/file_dialog.py）。
+        平台策略（均避开 macOS 上 tkinter/Tk 与 pygame 的 SDL2 冲突崩溃）：
+        - macOS：原生 osascript；
+        - Windows：ctypes 调用原生 GetOpenFileNameW（零依赖）；
+        - Linux：tkinter -> zenity/kdialog -> xdg 兜底；
+        - 全部失败给出明确提示，绝不静默“无反映”。
         """
         import sys
+        print('[import_image] platform =', sys.platform, file=sys.stderr)
         if sys.platform == 'darwin':
             path = self._pick_image_macos()
-        else:
+        elif sys.platform == 'win32':
+            path = self._pick_image_windows()
+            if not path:
+                path = self._pick_image_tk()  # tkinter 兜底
+        else:  # linux / 其它
             path = self._pick_image_tk()
+            if not path:
+                path = self._pick_image_linux_native()
         if not path:
-            # tkinter 在部分环境缺失或初始化失败时的兜底
-            path = self._pick_image_fallback()
+            self.show_toast('无法打开文件选择框，请检查系统图形环境')
         return path or ''
 
     def _pick_image_macos(self):
@@ -365,11 +372,62 @@ class HintEvalMixin:
             self.show_toast('无法打开文件框: ' + (out.stderr.strip() or ('code %d' % out.returncode)))
         return ''
 
+    def _pick_image_windows(self):
+        """用 ctypes 调原生 GetOpenFileNameW，零依赖、不触碰 tkinter。"""
+        import ctypes
+        from ctypes import wintypes
+        try:
+            comdlg32 = ctypes.windll.comdlg32
+            user32 = ctypes.windll.user32
+        except Exception as e:
+            print('[import_image] ctypes win32 不可用:', e, file=sys.stderr)
+            return ''
+        BUF = 65535
+        class OPENFILENAME(ctypes.Structure):
+            _fields_ = [
+                ('lStructSize', wintypes.DWORD),
+                ('hwndOwner', wintypes.HWND),
+                ('hInstance', wintypes.HINSTANCE),
+                ('lpstrFilter', wintypes.LPCWSTR),
+                ('lpstrCustomFilter', wintypes.LPCWSTR),
+                ('nMaxCustFilter', wintypes.DWORD),
+                ('nFilterIndex', wintypes.DWORD),
+                ('lpstrFile', wintypes.LPWSTR),
+                ('nMaxFile', wintypes.DWORD),
+                ('lpstrFileTitle', wintypes.LPWSTR),
+                ('nMaxFileTitle', wintypes.DWORD),
+                ('lpstrInitialDir', wintypes.LPCWSTR),
+                ('lpstrTitle', wintypes.LPCWSTR),
+                ('Flags', wintypes.DWORD),
+                ('nFileOffset', wintypes.WORD),
+                ('nFileExtension', wintypes.WORD),
+                ('lpstrDefExt', wintypes.LPCWSTR),
+                ('lCustData', wintypes.LPARAM),
+                ('lpfnHook', wintypes.LPARAM),
+                ('lpTemplateName', wintypes.LPCWSTR),
+            ]
+        buf = ctypes.create_unicode_buffer(BUF)
+        ofn = OPENFILENAME()
+        ofn.lStructSize = ctypes.sizeof(ofn)
+        ofn.hwndOwner = user32.GetForegroundWindow()
+        ofn.lpstrFilter = '图片文件\0*.png;*.jpg;*.jpeg;*.bmp;*.gif\0所有文件\0*.*\0\0'
+        ofn.lpstrFile = buf
+        ofn.nMaxFile = BUF
+        ofn.lpstrTitle = '选择棋局图片'
+        ofn.Flags = 0x00080000 | 0x00001000  # OFN_EXPLORER | OFN_FILEMUSTEXIST
+        try:
+            if comdlg32.GetOpenFileNameW(ctypes.byref(ofn)):
+                return buf.value
+        except Exception as e:
+            print('[import_image] GetOpenFileNameW 失败:', e, file=sys.stderr)
+        return ''
+
     def _pick_image_tk(self):
         try:
             import tkinter as tk
             from tkinter import filedialog
-        except Exception:
+        except Exception as e:
+            print('[import_image] tkinter 不可用:', e, file=sys.stderr)
             return ''
         try:
             root = tk.Tk()
@@ -378,7 +436,8 @@ class HintEvalMixin:
                 title='选择棋局图片',
                 filetypes=[('图片', '*.png *.jpg *.jpeg *.bmp *.gif'),
                            ('所有文件', '*.*')])
-        except Exception:
+        except Exception as e:
+            print('[import_image] tkinter 弹框失败:', e, file=sys.stderr)
             return ''
         finally:
             try:
@@ -387,13 +446,20 @@ class HintEvalMixin:
                 pass
         return path or ''
 
-    def _pick_image_fallback(self):
-        """主方案都不可用时的提示（不诱导 macOS 用户走崩溃的 tkinter）。"""
-        import sys
-        if sys.platform == 'darwin':
-            self.show_toast('无法打开系统文件框，请检查系统权限')
-        else:
-            self.show_toast('环境缺少 tkinter，无法打开文件框')
+    def _pick_image_linux_native(self):
+        """Linux 无 tkinter 时，用 zenity / kdialog 原生文件框。"""
+        import subprocess
+        for cmd in (
+            ['zenity', '--file-selection', '--title=选择棋局图片',
+             '--file-filter=图片 | *.png *.jpg *.jpeg *.bmp *.gif'],
+            ['kdialog', '--getopenfilename', '.', '图片 (*.png *.jpg *.jpeg *.bmp *.gif)'],
+        ):
+            try:
+                out = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+                if out.returncode == 0 and out.stdout.strip():
+                    return out.stdout.strip()
+            except Exception:
+                continue
         return ''
 
 
