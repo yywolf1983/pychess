@@ -38,7 +38,7 @@ class SidebarMixin:
                 icon = btn.get('icon')
                 icon_color = None
                 badge = None
-            self._draw_button(btn['rect'], label, 'small',
+            self._draw_button(btn['rect'], label, getattr(self, 'menu_font', 'small'),
                               base=base, hover=hover, active=active,
                               text_color=(235, 240, 248), icon=icon,
                               icon_color=icon_color, badge=badge,
@@ -47,10 +47,12 @@ class SidebarMixin:
         mode_btn = next(b for b in self.menu_buttons if b['key'] == 'mode')
         pygame.draw.line(self.screen, (64, 82, 108),
                          (mode_btn['rect'].x - 16, 18), (mode_btn['rect'].x - 16, self.menu_h - 18), 1)
-        # 品牌（窗口最右侧）
-        bx = self.window_width - 170 - 16
+        # 品牌（窗口最右侧）—— 品牌估算宽度/字号随 ui_scale 缩放，避免覆盖菜单按钮
+        brand_w = int(170 * self.ui_scale)
+        bx = self.window_width - brand_w - 16
         by = self.menu_h // 2
-        self._draw_text_left('中国象棋', bx + 4, by, 'large', (245, 212, 132))
+        brand_font = 'medium' if self.ui_scale > 0.8 else ('small' if self.ui_scale > 0.6 else 'xsmall')
+        self._draw_text_left('中国象棋', bx + 4, by, brand_font, (245, 212, 132))
 
 
     def _draw_mode_menu(self):

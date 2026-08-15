@@ -19,7 +19,7 @@ class ChessView:
     def __init__(self, screen: pygame.Surface, chess_info: ChessInfo):
         self.screen = screen
         self.chess_info = chess_info
-        self.scale = 0.85
+        self.scale = 0.68
         # 坐标体系必须与 Android 版 ChessView 完全一致，否则棋子会在 py 中整体偏移。
         # Android 采用「设计单位」线性公式（而非读取图片黑线像素）：
         #   源图单位 755×938，GRID=84(每格)、HALF=44(首列 x 偏移)、BOARD_TOP=44(首行基准)
@@ -40,16 +40,24 @@ class ChessView:
         self.padding_top = self.board_padding
         # 棋子边长按设计单位 PIECE=90（略大于格距 84，视觉更饱满），与 Android 一致
         self.piece_size = int(86 * self.scale)
-        self.board_width = int(self.SRC_W * self.scale)
-        self.board_height = int(self.SRC_H * self.scale)
+        # 底图严格按 scale 缩放（保证与元素定位同一比例），容器 board_width/height
+        # 在此基础上各加半颗棋子余量，仅用于容纳最边缘棋子/坐标，不改变缩放比例
+        self._board_draw_w = int(self.SRC_W * self.scale)
+        self._board_draw_h = int(self.SRC_H * self.scale)
+        self.board_width = self._board_draw_w + self.piece_size // 2
+        self.board_height = self._board_draw_h + self.piece_size // 2
         # 不再使用任何手调偏移：棋子中心严格对齐设计单位交点（Android 版做法）。
         self.piece_offset_y = 0
         self.piece_offset_x = 0
         self.first_col_offset_x = 0
         self.black_first_row_offset_y = 0
         # 棋子以【中心】对齐格点交点（象棋棋子落在线点中心）
-        self._piece_cx_off = -self.piece_size // 2
-        self._piece_cy_off = -self.piece_size // 2
+        # 与 Android 一致的视觉微调：棋子整体左移/下移约 2 源图像素（抵消美术槽位偏差，
+        # 否则相对棋盘底图会偏右偏上一丝）。nudge 按 scale 折算为屏幕像素。
+        self._nudge_x = -round(2 * self.scale)
+        self._nudge_y = round(2 * self.scale)
+        self._piece_cx_off = -self.piece_size // 2 + self._nudge_x
+        self._piece_cy_off = -self.piece_size // 2 + self._nudge_y
 
         self.images = self._load_images()
         self._precompute_scaled()
@@ -70,7 +78,7 @@ class ChessView:
         try:
             if self.images.get('board'):
                 self._board_scaled = pygame.transform.scale(
-                    self.images['board'], (self.board_width, self.board_height))
+                    self.images['board'], (self._board_draw_w, self._board_draw_h))
             else:
                 self._board_scaled = None
         except Exception:
@@ -343,12 +351,12 @@ class ChessView:
         # 红黑对称、无特例（RED_UP=0）；band 为固定边带偏移（对应参考设计单位的 30~46）。
         # 与棋子共用同一整体平移（piece_offset_x/y），保证坐标与棋子中心处于同一体系。
         band = int(56 * self.scale)
-        top_y_black = int(self._gy(0) + self.piece_offset_y) - band
-        bottom_y_black = int(self._gy(9) + self.piece_offset_y) + band
+        top_y_black = int(self._gy(0) + self.piece_offset_y) - band + self._nudge_y
+        bottom_y_black = int(self._gy(9) + self.piece_offset_y) + band + self._nudge_y
         top_y_red = top_y_black
         bottom_y_red = bottom_y_black
         for x in range(9):
-            sx = self._gx_p(x) + (self.first_col_offset_x if x == 0 else 0)
+            sx = self._gx_p(x) + (self.first_col_offset_x if x == 0 else 0) + self._nudge_x
             red_num = CN[8 - x]       # 红方右手(物理列8)=一，向左递增
             black_num = AR[x]         # 黑方右手(物理列0)=1，向右递增
             if self.board_flipped:
@@ -502,11 +510,11 @@ class ChessView:
         draw_to_y = 9 - to_y
 
         # 棋子以网格交点为中心绘制（并叠加统一整体偏移），支招线条也应落在同一中心
-        from_center_x = self._gx_p(from_x) + self.piece_offset_x
-        from_center_y = self._gy_p(draw_from_y) + self.piece_offset_y + (
+        from_center_x = self._gx_p(from_x) + self.piece_offset_x + self._nudge_x
+        from_center_y = self._gy_p(draw_from_y) + self.piece_offset_y + self._nudge_y + (
             self.black_first_row_offset_y if from_y == 9 else 0)
-        to_center_x = self._gx_p(to_x) + self.piece_offset_x
-        to_center_y = self._gy_p(draw_to_y) + self.piece_offset_y + (
+        to_center_x = self._gx_p(to_x) + self.piece_offset_x + self._nudge_x
+        to_center_y = self._gy_p(draw_to_y) + self.piece_offset_y + self._nudge_y + (
             self.black_first_row_offset_y if to_y == 9 else 0)
 
         f = self.scale / 0.9
@@ -523,40 +531,23 @@ class ChessView:
 
         outline = (16, 16, 16)
         if solid:
+            # 我方推荐：干净实线（深色描边 + 主色填充），无流动光点
             pygame.draw.line(self.screen, outline,
                              (from_center_x, from_center_y), (base_x, base_y), width + 3)
             pygame.draw.line(self.screen, color,
                              (from_center_x, from_center_y), (base_x, base_y), width)
         else:
-            # 对方应招（虚线）随时间相位滚动，产生流动感
-            off = int((time.time() * 60.0)) % 20
-            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, outline, width + 3, off)
-            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, color, width, off)
+            # 对方应招：静态虚线（描边 + 主色），不再滚动，保持简洁易读
+            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, outline, width + 3, 0)
+            self._draw_dashed_line(from_center_x, from_center_y, base_x, base_y, color, width, 0)
 
         if radius:
-            # 起点高亮圆圈：呼吸脉动（半径与透明度随时间起伏），强化“从这里走”
-            p = 0.5 + 0.5 * math.sin(time.time() * 3.0)
-            r = int(radius + 2 + 3 * p)
-            alpha = int(90 + 60 * p)
-            dot = pygame.Surface((2 * r, 2 * r), pygame.SRCALPHA)
-            dcx = dcy = r
-            pygame.draw.circle(dot, (*outline, 130), (dcx, dcy), r)
-            pygame.draw.circle(dot, (*color, alpha), (dcx, dcy), radius)
-            self.screen.blit(dot, (from_center_x - dcx, from_center_y - dcy))
-
-        # 实线（我方推荐）沿箭头方向流动的光点，直观传达“走向目标”的方向感
-        if solid and dist > head_len + 4:
-            flow = (time.time() * 0.6) % 1.0
-            for k in (0.0, 0.5):
-                frac = (flow + k) % 1.0
-                pxc = from_center_x + (base_x - from_center_x) * frac
-                pyc = from_center_y + (base_y - from_center_y) * frac
-                a = int(170 * (1.0 - abs(frac - 0.5) * 1.6))
-                a = max(0, min(170, a))
-                rr = max(3, int(5 * f))
-                glow = pygame.Surface((2 * rr + 6, 2 * rr + 6), pygame.SRCALPHA)
-                pygame.draw.circle(glow, (*color, a), (rr + 3, rr + 3), rr)
-                self.screen.blit(glow, (int(pxc - rr - 3), int(pyc - rr - 3)))
+            # 起点高亮圆圈：固定清晰（不再脉动），强调“从这里走”，与棋子中心精确对齐
+            ring = pygame.Surface((2 * radius, 2 * radius), pygame.SRCALPHA)
+            rcx = rcy = radius
+            pygame.draw.circle(ring, (*outline, 120), (rcx, rcy), radius)
+            pygame.draw.circle(ring, (*color, 200), (rcx, rcy), radius - 3)
+            self.screen.blit(ring, (int(from_center_x - rcx), int(from_center_y - rcy)))
 
         self._draw_arrow(from_center_x, from_center_y, to_center_x, to_center_y, color, outline)
 

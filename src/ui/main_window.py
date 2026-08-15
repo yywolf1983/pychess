@@ -64,16 +64,22 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
     def __init__(self):
         pygame.init()
         
+        # 整体 UI 缩放因子：棋盘(ChessView.scale)与菜单/底栏统一乘此系数，
+        # 保证整体等比缩小。当前 0.70 → 窗口总高 < 900。
+        self.ui_scale = 0.68
         # 棋盘尺寸交由 ChessView 计算（含上下各 10px 留白），此处先取初值占位，
         # 实例化后会被 chess_view.board_width / board_height 覆盖，保证两者一致。
-        self.board_width = int(755 * 0.85)
-        self.board_height = int(938 * 0.85)  # 与 ChessView 中 chessboard.png 真实高度一致（回写时以 ChessView 为准）
-        self.sidebar_width = 250
+        # 初值占位（会被 ChessView 回写覆盖），此处加 piece_size//2 余量与 ChessView 一致
+        ps = int(86 * self.ui_scale) // 2  # 与 ChessView.piece_size//2 对应
+        self.board_width = int(755 * self.ui_scale) + ps
+        self.board_height = int(938 * self.ui_scale) + ps  # 与 ChessView 中 chessboard.png 真实高度一致（回写时以 ChessView 为准）
+        # 侧栏宽度：在保证文字可读的前提下尽量不挤压棋盘（0.95 太宽会盖住棋盘右侧）
+        self.sidebar_width = int(250 * 0.88)
         # 顶部菜单栏（新局/加载/保存/设置/对战模式）
-        self.menu_h = 54
+        self.menu_h = int(54 * self.ui_scale)
         # 顶部不再保留浮动评分条；评分等一并归入右侧「对局状态」卡片
         self.eval_top_h = 0
-        self.eval_bottom_h = 200
+        self.eval_bottom_h = int(200 * self.ui_scale)
         self.board_offset_y = self.menu_h + self.eval_top_h
         self.window_width = self.board_width + self.sidebar_width
         self.window_height = self.menu_h + self.eval_top_h + self.board_height + self.eval_bottom_h
@@ -227,16 +233,21 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
             ('act:settings', '设置', 'settings', 'action'),
             ('mode', '模式', None, 'mode'),
         ]
-        pad = 10
-        gap = 8
+        k = self.ui_scale
+        pad = int(10 * k)
+        gap = int(8 * k)
         n = len(menu_items)
         # 品牌移到窗口最右侧，菜单按钮利用品牌左侧的整段空间，使每个按钮适度加宽
-        brand_w_est = 170   # 「中国象棋」(large 字号) 估算宽度
-        brand_x = self.window_width - brand_w_est - 16
-        menu_right = brand_x - 16
+        # 品牌字号随 ui_scale 缩小，估算宽度同步缩放，避免按钮区计算过宽导致重叠/溢出
+        brand_w_est = int(170 * k)
+        brand_x = self.window_width - brand_w_est - int(16 * k)
+        menu_right = brand_x - int(16 * k)
         bw = (menu_right - pad - (n - 1) * gap) / n
-        bh = 40
+        # 按钮高度必须 ≤ 菜单栏高度，随 ui_scale 缩放（之前固定 40 超出 38 的菜单栏）
+        bh = max(20, int(self.menu_h - 8 * k))
         by = (self.menu_h - bh) // 2
+        # 菜单字号随 ui_scale 收敛：缩放较小时用更小的档位，避免文字溢出按钮
+        self.menu_font = 'xsmall' if k <= 0.75 else 'small'
         for i, (key, label, icon, kind) in enumerate(menu_items):
             x = pad + i * (bw + gap)
             self.menu_buttons.append({
