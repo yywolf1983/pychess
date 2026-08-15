@@ -256,8 +256,8 @@ class EditPanelMixin:
         """参照 Android 摆棋界面：使用真实棋子图片，分多行展示（每行 3 枚）。
         面板整体在侧栏视口内可滚动，滚动条集成在侧栏右侧（参照 Android 可滚动面板）。
         已达上限的棋子置灰禁用，未达上限的棋子置亮可选。"""
-        inner_x = sb_x + 20
-        inner_w = self.sidebar_width - 40
+        inner_x = sb_x + 8
+        inner_w = self.sidebar_width - 16
 
         # 滚动视口：标题/“完成编辑”按钮之下，到全宽底部面板之前
         vp_top = self.edit_button.bottom + 8
@@ -271,10 +271,10 @@ class EditPanelMixin:
         black_palette = [(1, '将'), (2, '士'), (3, '象'), (4, '马'), (5, '车'), (6, '炮'), (7, '卒')]
         red_palette = [(8, '帅'), (9, '仕'), (10, '相'), (11, '马'), (12, '车'), (13, '炮'), (14, '兵')]
         cols = 3
-        gap = 8
-        cw = (inner_w - (cols - 1) * gap) // cols  # 每格宽（约 64）
-        ch = 60
-        img_size = cw - 16
+        gap = 10
+        cw = (inner_w - (cols - 1) * gap) // cols  # 每格宽
+        ch = 62
+        img_size = cw - 6
 
         self.edit_ui = {}
 
