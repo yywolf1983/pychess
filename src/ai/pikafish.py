@@ -196,6 +196,9 @@ class PikafishAI:
         except Exception:
             return False
         finally:
+            # 先尝试优雅退出（quit），再强制 kill，最后显式关闭 stdin/stdout/stderr。
+            # 显式关闭管道可避免子进程已崩溃后 Python 垃圾回收刷新破损管道时抛出
+            # "Exception ignored in: <_io.TextIOWrapper>" 噪声。
             try:
                 proc.stdin.write('quit\n')
                 proc.stdin.flush()
@@ -209,6 +212,13 @@ class PikafishAI:
                 proc.wait(timeout=2)
             except Exception:
                 pass
+            for stream_attr in ('stdin', 'stdout', 'stderr'):
+                stream = getattr(proc, stream_attr, None)
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception:
+                        pass
     
     def initialize(self, engine_path: str = None):
         # 快速路径：已就绪直接返回，避免无谓加锁
@@ -769,6 +779,15 @@ class PikafishAI:
                 self.process.wait(timeout=3)
             except:
                 self.process.kill()
+            # 显式关闭管道，避免引擎已退出后 Python 垃圾回收刷新破损管道
+            # 时抛出 "Exception ignored in: <_io.TextIOWrapper>" 噪声
+            for stream_attr in ('stdin', 'stdout', 'stderr'):
+                stream = getattr(self.process, stream_attr, None)
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except Exception:
+                        pass
             self.process = None
         self.reader = None
         self.writer = None
