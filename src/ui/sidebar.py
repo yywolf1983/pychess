@@ -463,7 +463,7 @@ class SidebarMixin:
         card_y = 24
         card_w = 560
         # 内容高度随说明文字增加，低于该值时撑高卡片避免溢出
-        card_h = max(self.window_height - 48, 704)
+        card_h = max(self.window_height - 48, 760)
         self._draw_card(pygame.Rect(card_x, card_y, card_w, card_h), (255, 255, 255))
 
         content_x = card_x + 40
@@ -496,7 +496,7 @@ class SidebarMixin:
         self._draw_toggle_pill(effect_check_rect, self.settings.is_effect_play)
 
         # ---- AI 设置 ----
-        ai_rect = pygame.Rect(card_x + 24, card_y + 240, card_w - 48, 344)
+        ai_rect = pygame.Rect(card_x + 24, card_y + 240, card_w - 48, 328)
         subcard(ai_rect)
         self._draw_text_left('AI 设置', ai_rect.x + 20, ai_rect.y + 22, 'ssmall', (150, 172, 200))
         pygame.draw.line(self.screen, (140, 160, 185, 130),
@@ -528,7 +528,7 @@ class SidebarMixin:
             return minus_rect, plus_rect
 
         row_top = ai_rect.y + 56
-        row_step = 60
+        row_step = 56
         depth_minus_rect, depth_plus_rect = draw_row(
             row_top, '搜索深度 (层)', self.settings.depth, 5, 120, 'depth', 'depth',
             '每步向前推演的层数上限（越大越慢、越准）')
@@ -551,8 +551,23 @@ class SidebarMixin:
                              ai_rect.x + 20, force_y + 18, 'tiny', (150, 162, 180))
         self._draw_toggle_pill(force_check_rect, self.settings.force_variation)
 
+        # ---- 棋盘设置（坐标点显示）----
+        board_rect = pygame.Rect(card_x + 24, ai_rect.bottom + 20, card_w - 48, 96)
+        subcard(board_rect)
+        self._draw_text_left('棋盘设置', board_rect.x + 20, board_rect.y + 22, 'ssmall', (150, 172, 200))
+        pygame.draw.line(self.screen, (140, 160, 185, 130),
+                         (board_rect.x + 20, board_rect.y + 38), (board_rect.x + 66, board_rect.y + 38), 1)
+
+        # 显示棋盘坐标点（9×10 交点小圆点）—— 胶囊开关
+        coord_y = board_rect.y + 66
+        coord_check_rect = pygame.Rect(board_rect.right - 72, coord_y - 14, 52, 28)
+        self._draw_text_left('显示坐标点', board_rect.x + 20, coord_y, 'ssmall', (60, 72, 92))
+        self._draw_text_left('在 9×10 每个交点绘制小圆点，便于核对位置',
+                             board_rect.x + 20, coord_y + 18, 'tiny', (150, 162, 180))
+        self._draw_toggle_pill(coord_check_rect, self.settings.show_coord_points)
+
         # ---- 保存 / 取消 ----
-        save_y = ai_rect.bottom + 24
+        save_y = board_rect.bottom + 20
         save_rect = pygame.Rect(card_x + 40, save_y, 220, 50)
         self._draw_button(save_rect, '保存设置', 'large',
                           base=(92, 184, 120), hover=(70, 160, 100), text_color=(255, 255, 255))
@@ -572,6 +587,7 @@ class SidebarMixin:
             'multi_minus': multi_minus_rect,
             'multi_plus': multi_plus_rect,
             'force_check': force_check_rect,
+            'coord_check': coord_check_rect,
             'save': save_rect,
             'cancel': cancel_rect
         }
@@ -654,6 +670,8 @@ class SidebarMixin:
             self.settings.multi_pv = min(12, self.settings.multi_pv + 1)
         elif 'force_check' in self.settings_ui and self.settings_ui['force_check'].collidepoint(x, y):
             self.settings.force_variation = not self.settings.force_variation
+        elif 'coord_check' in self.settings_ui and self.settings_ui['coord_check'].collidepoint(x, y):
+            self.settings.show_coord_points = not self.settings.show_coord_points
         elif 'save' in self.settings_ui and self.settings_ui['save'].collidepoint(x, y):
             self._apply_settings_now()
             self.show_settings = False
@@ -692,4 +710,9 @@ class SidebarMixin:
         self.chess_info.setting.contempt = self.settings.contempt
         self.chess_info.setting.force_variation = self.settings.force_variation
         self.chess_info.setting.thinking_time = self.settings.thinking_time
+        # 棋盘设置：坐标点显示
+        self.chess_info.setting.show_coord_points = self.settings.show_coord_points
+        cv = getattr(self, 'chess_view', None)
+        if cv is not None and hasattr(cv, 'sync_from_setting'):
+            cv.sync_from_setting(self.settings)
 

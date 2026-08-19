@@ -35,6 +35,8 @@ class Setting:
         self.contempt = 20
         self.force_variation = True
         self.thinking_time = 3
+        # 是否显示棋盘所有坐标点（9×10 个交点小圆点）
+        self.show_coord_points = False
     
     def save(self):
         config_dir = _user_config_dir()
@@ -50,7 +52,8 @@ class Setting:
             'multi_pv': self.multi_pv,
             'contempt': self.contempt,
             'force_variation': self.force_variation,
-            'thinking_time': self.thinking_time
+            'thinking_time': self.thinking_time,
+            'show_coord_points': self.show_coord_points
         }
         
         with open(config_path, 'w', encoding='utf-8') as f:
@@ -85,6 +88,7 @@ class Setting:
                 self.contempt = data.get('contempt', 20)
                 self.force_variation = data.get('force_variation', True)
                 self.thinking_time = data.get('thinking_time', 3)
+                self.show_coord_points = bool(data.get('show_coord_points', False))
             except Exception:
                 pass
 

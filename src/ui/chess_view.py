@@ -20,6 +20,8 @@ class ChessView:
         self.screen = screen
         self.chess_info = chess_info
         self.scale = 0.66
+        # 是否在 9×10 交点绘制小圆点（可由 Setting 同步开启）
+        self.show_coord_points = False
         # 坐标体系必须与 Android 版 ChessView 完全一致，否则棋子会在 py 中整体偏移。
         # Android 采用「设计单位」线性公式（而非读取图片黑线像素）：
         #   源图单位 755×938，GRID=84(每格)、HALF=44(首列 x 偏移)、BOARD_TOP=44(首行基准)
@@ -79,6 +81,11 @@ class ChessView:
     def toggle_flip(self):
         """翻转棋盘视角（红/黑上下对调）。"""
         self.board_flipped = not self.board_flipped
+
+    def sync_from_setting(self, setting):
+        """从 Setting 同步显示选项（坐标点等）。"""
+        show_pts = bool(getattr(setting, 'show_coord_points', False))
+        self.show_coord_points = show_pts
 
     def _precompute_scaled(self):
         """将所有图片预缩放到目标尺寸并缓存，避免每帧重复 transform.scale 造成卡顿。"""
@@ -248,14 +255,18 @@ class ChessView:
             self.screen.blit(self._board_scaled, (0, 0))
         else:
             self._draw_chessboard_grid()
-        
+
         self._draw_coordinates()
-        
+
         self._draw_pieces()
         self._draw_selected()
         self._draw_possible_moves()
         self._draw_move_trail()
         self._draw_suggestions()
+
+        # 坐标点最后绘制，确保在棋子之上清晰可见
+        if self.show_coord_points:
+            self._draw_coord_points()
     
     def _gx(self, x):
         """第 x 条竖线（0..8）在缩放后棋盘上的 x 像素（基于图片实测网格线线性插值）。"""
@@ -334,6 +345,28 @@ class ChessView:
         if getattr(self, '_cjk_font_bold', None) is None:
             self._cjk_font_bold = self._make_coord_font(True)   # 黑方数字加粗
         return self._cjk_font_bold
+
+    def _draw_coord_points(self):
+        """在 9×10 个交点处绘制特色坐标点（双层环 + 中心高光），便于核对棋子位置。
+
+        绘制顺序在棋子之后，故即使交点上有棋子，坐标点也清晰可见。
+        """
+        R = max(4, int(5 * self.scale))           # 外环半径
+        r = max(2, int(2 * self.scale))           # 内点半径
+        size = R * 2 + 4
+        surf = pygame.Surface((size, size), pygame.SRCALPHA)
+        cx = cy = size // 2
+        # 外环：半透明深色描边
+        pygame.draw.circle(surf, (30, 40, 60, 110), (cx, cy), R, 2)
+        # 内点：暖色填充（与木质棋盘对比鲜明）
+        pygame.draw.circle(surf, (200, 140, 60, 220), (cx, cy), r)
+        # 中心高光：增加立体感
+        pygame.draw.circle(surf, (255, 230, 180, 200), (cx - 1, cy - 1), max(1, r // 2))
+        for c in range(9):
+            for r in range(10):
+                x = int(self._gx_p(c))
+                y = int(self._gy_p(r))
+                self.screen.blit(surf, (x - cx, y - cy))
 
     def _draw_coord_text(self, text, cx, cy, color, bold=False):
         font = self._coord_font_bold() if bold else self._coord_font()
