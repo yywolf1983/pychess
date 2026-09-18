@@ -16,6 +16,9 @@ from ..resources import resource_path
 
 logger = logging.getLogger(__name__)
 
+# Windows 下以“无窗口”方式启动引擎子进程，避免弹出控制台黑窗口
+_CREATE_NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
+
 
 def _make_executable(engine_path: str):
     """类 Unix 系统下确保引擎二进制具备可执行权限（仓库克隆后执行位可能丢失）。"""
@@ -131,9 +134,11 @@ class PikafishAI:
             )
             # 降低引擎进程优先级（Windows），避免其首步加载 NNUE 权重/搜索热身
             # 时占满 CPU 把 UI 主线程饿死，导致「落子卡顿」。
+            # 同时以“无窗口”方式启动（CREATE_NO_WINDOW），避免弹出控制台黑窗口。
             if sys.platform == 'win32':
-                popen_kwargs['creationflags'] = getattr(
-                    subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0x4000)
+                popen_kwargs['creationflags'] = (
+                    getattr(subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0x4000)
+                    | _CREATE_NO_WINDOW)
             proc = subprocess.Popen([engine_path], **popen_kwargs)
         except Exception:
             return False
@@ -244,9 +249,11 @@ class PikafishAI:
                 )
                 # 降低引擎进程优先级（Windows），避免其加载 NNUE 权重/搜索时占满 CPU
                 # 把 UI 主线程饿死，导致「落子卡顿」；引擎仍能利用空闲核心并行计算。
+                # 同时以“无窗口”方式启动（CREATE_NO_WINDOW），避免弹出控制台黑窗口。
                 if sys.platform == 'win32':
-                    popen_kwargs['creationflags'] = getattr(
-                        subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0x4000)
+                    popen_kwargs['creationflags'] = (
+                        getattr(subprocess, 'BELOW_NORMAL_PRIORITY_CLASS', 0x4000)
+                        | _CREATE_NO_WINDOW)
                 self.process = subprocess.Popen([engine_path], **popen_kwargs)
                 
                 self.reader = self.process.stdout

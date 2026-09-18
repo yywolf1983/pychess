@@ -13,6 +13,7 @@ from ..game.move import Move
 from ..game.rule import is_king_danger
 from ..ai.pikafish import PikafishAI
 from .chess_view import ChessView
+from ..resources import resource_path
 
 
 from .board_interaction import BoardInteractionMixin
@@ -86,6 +87,16 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         
         self.screen = pygame.display.set_mode((self.window_width, self.window_height))
         pygame.display.set_caption('中国象棋')
+
+        # 将项目 logo 设为窗口图标（开发/打包均可正确解析）
+        try:
+            logo_path = resource_path('logo.png')
+            if os.path.exists(logo_path):
+                _logo = pygame.image.load(logo_path).convert_alpha()
+                _logo = pygame.transform.smoothscale(_logo, (32, 32))
+                pygame.display.set_icon(_logo)
+        except Exception:
+            pass
         
         self.chess_info = ChessInfo()
         self.chess_view = ChessView(

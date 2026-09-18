@@ -58,6 +58,42 @@ python main.py
 > 中挑选合适的 AVX/AVX2/AVX-512 变体；其余平台使用 `engine/` 顶层或对应子目录的二进制。
 > 请确保 `pikafish.nnue` 模型文件存在（根目录或 `engine/` 下），否则引擎无法加载权重。
 
+## 打包成可执行文件
+
+> **请使用下面的 `build.py` 打包，不要直接 `pyinstaller main.py`**：
+> 直接对 `main.py` 打包会让 PyInstaller 重新生成默认 `main.spec`（资源列表为空），
+> 导致**所有外部资源都不会被打进 exe**。
+
+### 前置依赖
+
+```bash
+pip install pyinstaller
+# 建议同时安装 Pillow（生成多尺寸 .ico 图标需要）
+pip install Pillow
+```
+
+### 打包命令（推荐）
+
+```bash
+# 在项目根目录执行，生成 dist/main.exe（Windows）/ dist/main（Linux/macOS）
+python build.py
+```
+
+`build.py` 已把 `src/resources`、`src/models`、`config`、`engine`、`pikafish.nnue`、
+`1七星聚会.pgn`、`logo.png` 全部通过 `--add-data` 显式传入，并把 `logo.ico` 作为程序图标，
+启动前还会校验这些资源是否齐全。
+
+- 打包前若 `logo.ico` 缺失，可用 `logo.png` 重新生成（多尺寸 16–256）：
+
+  ```bash
+  python -c "from PIL import Image; im=Image.open('logo.png').convert('RGBA'); im.save('logo.ico', sizes=[(s,s) for s in [16,24,32,48,64,128,256]])"
+  ```
+
+> 说明：运行时资源由 `resource_path()` 从 `sys._MEIPASS` 正确解析；Windows 下 exe 文件图标
+> 使用 `logo.ico`。macOS 的 `.app` 图标若要显示 logo，需额外提供 `logo.icns` 并填入 `BUNDLE`
+> 的 `icon` 字段。若你确实需要基于 spec 打包，请使用仓库内的 `main.spec`（已含全部资源与
+> `upx_exclude`），命令为 `pyinstaller main.spec`，**切勿**对 `main.py` 直接打包。
+
 ## 使用说明
 
 - **对弈**：点击棋子选择，再点击目标位置落子；轮到 AI 时自动思考。
