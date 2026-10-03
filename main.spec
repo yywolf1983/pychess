@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('src/resources', 'src/resources'), ('src/models', 'src/models'), ('config', 'config'), ('engine', 'engine'), ('pikafish.nnue', '.'), ('1七星聚会.pgn', '.'), ('logo.png', '.')],
+    datas=[('src/resources', 'src/resources'), ('src/models', 'src/models'), ('config', 'config'), ('engine', 'engine'), ('pikafish.nnue', '.'), ('logo.png', '.')],
     hiddenimports=['onnxruntime', 'numpy', 'PIL'],
     hookspath=[],
     hooksconfig={},
@@ -36,10 +36,4 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['logo.ico'],
-)
-app = BUNDLE(
-    exe,
-    name='main.app',
-    icon='logo.ico',
-    bundle_identifier=None,
 )

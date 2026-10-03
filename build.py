@@ -23,7 +23,6 @@ DATAS = [
     ('config', 'config'),                 # settings.json + 手写体字体
     ('engine', 'engine'),                 # 各平台 Pikafish 引擎 + 引擎自带 nnue
     ('pikafish.nnue', '.'),               # 根目录权重副本（代码回退用）
-    ('1七星聚会.pgn', '.'),               # 内置棋谱
     ('logo.png', '.'),                    # 程序 logo
 ]
 
