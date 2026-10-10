@@ -47,6 +47,7 @@ class HintEvalMixin:
             self.load_game()
         elif action == 'settings':
             self.show_settings = True
+            self.settings_scroll = 0
         elif action == 'flip':
             # 翻转棋盘视角（红/黑上下对调）；棋子与文字保持正向
             self.chess_view.toggle_flip()

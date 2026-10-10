@@ -462,18 +462,38 @@ class SidebarMixin:
         card_x = (self.window_width - 560) // 2
         card_y = 24
         card_w = 560
-        # 内容高度随说明文字增加，低于该值时撑高卡片避免溢出
-        card_h = max(self.window_height - 48, 760)
+        # 卡片填满窗口高度；内容区可滚动，保存/取消固定底部
+        card_h = self.window_height - 48
         self._draw_card(pygame.Rect(card_x, card_y, card_w, card_h), (255, 255, 255))
 
         content_x = card_x + 40
         cx = card_x + card_w // 2
 
-        # ---- 标题区 ----
+        # ---- 固定标题区 ----
         self._draw_text('设置', cx, card_y + 32, 'large', (40, 52, 72))
         self._draw_text('对局偏好 · AI 强度', cx, card_y + 58, 'tiny', (150, 162, 180))
         pygame.draw.rect(self.screen, (96, 156, 236),
                          pygame.Rect(cx - 22, card_y + 72, 44, 3), border_radius=2)
+
+        # ---- 底部固定区：保存 / 取消 ----
+        footer_h = 72
+        footer_y = card_y + card_h - footer_h
+        save_rect = pygame.Rect(card_x + 40, footer_y + 11, 220, 50)
+        cancel_rect = pygame.Rect(card_x + card_w - 40 - 220, footer_y + 11, 220, 50)
+
+        # ---- 可滚动内容视口 ----
+        view_top = card_y + 86
+        view_bottom = footer_y - 8
+        viewport = pygame.Rect(card_x, view_top, card_w, view_bottom - view_top)
+        # 内容逻辑底部（不滚动时）约为 card_y+782，据此限制滚动范围
+        max_scroll = max(0, (card_y + 782) - view_bottom)
+        s = getattr(self, 'settings_scroll', 0)
+        s = max(0, min(max_scroll, s))
+        self.settings_scroll = s
+        self.settings_max_scroll = max_scroll
+        self.settings_viewport = viewport
+        base = card_y - s
+        self.screen.set_clip(viewport)
 
         def subcard(r):
             """浅灰圆角分区卡片，浮在白色主卡片之上。"""
@@ -481,7 +501,7 @@ class SidebarMixin:
             pygame.draw.rect(self.screen, (226, 231, 238), r, border_radius=12, width=1)
 
         # ---- 音效设置 ----
-        sub_rect = pygame.Rect(card_x + 24, card_y + 92, card_w - 48, 126)
+        sub_rect = pygame.Rect(card_x + 24, base + 92, card_w - 48, 126)
         subcard(sub_rect)
         self._draw_text_left('音效设置', sub_rect.x + 20, sub_rect.y + 22, 'ssmall', (150, 172, 200))
         pygame.draw.line(self.screen, (140, 160, 185, 130),
@@ -495,8 +515,35 @@ class SidebarMixin:
         effect_check_rect = pygame.Rect(sub_rect.right - 72, effect_y - 14, 52, 28)
         self._draw_toggle_pill(effect_check_rect, self.settings.is_effect_play)
 
+        # ---- 难度预设（初级 / 高手 / 解题 / 飘逸）----
+        # 一键套用成套参数：思考时间 / 搜索深度 / 技能级别 / MultiPV / 强制变着
+        preset_rect = pygame.Rect(card_x + 24, sub_rect.bottom + 12, card_w - 48, 96)
+        subcard(preset_rect)
+        self._draw_text_left('难度预设', preset_rect.x + 20, preset_rect.y + 22, 'ssmall', (150, 172, 200))
+        pygame.draw.line(self.screen, (140, 160, 185, 130),
+                         (preset_rect.x + 20, preset_rect.y + 38),
+                         (preset_rect.x + 66, preset_rect.y + 38), 1)
+        # 一行四个按钮：前三个绿色（强制变着开），飘逸红色（强制变着关 + 性能警告）
+        pbtn_margin, pbtn_gap, pbtn_h = 12, 8, 34
+        pbtn_w = (preset_rect.width - 2 * pbtn_margin - 3 * pbtn_gap) // 4
+        pbtn_y = preset_rect.y + 52
+        pbtn_x0 = preset_rect.x + pbtn_margin
+        preset_btns = [
+            ('初级', (92, 184, 120), (70, 160, 100)),
+            ('高手', (92, 184, 120), (70, 160, 100)),
+            ('解题', (92, 184, 120), (70, 160, 100)),
+            ('飘逸', (229, 80, 70), (198, 58, 50)),
+        ]
+        self._preset_rects = []
+        for i, (label, base, hover) in enumerate(preset_btns):
+            rx = pbtn_x0 + i * (pbtn_w + pbtn_gap)
+            r = pygame.Rect(rx, pbtn_y, pbtn_w, pbtn_h)
+            self._draw_button(r, label, 'ssmall', base=base, hover=hover,
+                              text_color=(255, 255, 255))
+            self._preset_rects.append(r)
+
         # ---- AI 设置 ----
-        ai_rect = pygame.Rect(card_x + 24, card_y + 240, card_w - 48, 328)
+        ai_rect = pygame.Rect(card_x + 24, preset_rect.bottom + 12, card_w - 48, 328)
         subcard(ai_rect)
         self._draw_text_left('AI 设置', ai_rect.x + 20, ai_rect.y + 22, 'ssmall', (150, 172, 200))
         pygame.draw.line(self.screen, (140, 160, 185, 130),
@@ -566,14 +613,16 @@ class SidebarMixin:
                              board_rect.x + 20, coord_y + 18, 'tiny', (150, 162, 180))
         self._draw_toggle_pill(coord_check_rect, self.settings.show_coord_points)
 
-        # ---- 保存 / 取消 ----
-        save_y = board_rect.bottom + 20
-        save_rect = pygame.Rect(card_x + 40, save_y, 220, 50)
+        # ---- 底部固定保存 / 取消 ----
+        self.screen.set_clip(None)
         self._draw_button(save_rect, '保存设置', 'large',
                           base=(92, 184, 120), hover=(70, 160, 100), text_color=(255, 255, 255))
-        cancel_rect = pygame.Rect(card_x + card_w - 40 - 220, save_y, 220, 50)
         self._draw_button(cancel_rect, '取消', 'large',
                           base=(206, 108, 108), hover=(188, 86, 86), text_color=(255, 255, 255))
+
+        # ---- 内容滚动条 ----
+        if max_scroll > 0:
+            self._draw_scrollbar(viewport, viewport.y, viewport.height, s, max_scroll)
 
         self.settings_ui = {
             'music_check': music_check_rect,
@@ -588,6 +637,10 @@ class SidebarMixin:
             'multi_plus': multi_plus_rect,
             'force_check': force_check_rect,
             'coord_check': coord_check_rect,
+            'preset_0': self._preset_rects[0],
+            'preset_1': self._preset_rects[1],
+            'preset_2': self._preset_rects[2],
+            'preset_3': self._preset_rects[3],
             'save': save_rect,
             'cancel': cancel_rect
         }
@@ -640,11 +693,38 @@ class SidebarMixin:
                 break
 
 
+    def _settings_scrollbar_down(self, x, y):
+        """点击设置内容滚动条：定位并开始拖拽，返回是否命中。"""
+        if getattr(self, 'settings_max_scroll', 0) <= 0 or self.settings_viewport is None:
+            return False
+        vp = self.settings_viewport
+        # 命中区域：视口右侧滚动条带（加宽便于点击，且不覆盖内容区）
+        if not (vp.right - 14 <= x <= vp.right and vp.y <= y <= vp.bottom):
+            return False
+        max_scroll = self.settings_max_scroll
+        thumb_h = max(24, int(vp.height * (vp.height / (vp.height + max_scroll))))
+        # 点击位置直接定位到对应滚动量，并进入拖拽
+        ratio = max(0.0, min(1.0, (y - vp.y - thumb_h / 2) / (vp.height - thumb_h))) if max_scroll else 0
+        self.settings_scroll = max(0, min(max_scroll, int(ratio * max_scroll)))
+        thumb_y = vp.y + int((vp.height - thumb_h) * (self.settings_scroll / max_scroll)) if max_scroll else vp.y
+        self.settings_scroll_dragging = True
+        self.settings_scroll_drag_offset = y - thumb_y
+        return True
+
+
     def _apply_settings_now(self):
         """任意设置变更后立即生效：同步给对局、下发给引擎，并持久化。"""
         self._sync_settings()
         self.apply_settings_to_ai()
         self.settings.save()
+
+    def _set_preset(self, time_s, depth, skill, multi, force):
+        """难度预设：一次性套用思考时间/深度/技能级别/MultiPV/强制变着。"""
+        self.settings.thinking_time = time_s
+        self.settings.depth = depth
+        self.settings.skill_level = skill
+        self.settings.multi_pv = multi
+        self.settings.force_variation = force
 
 
     def handle_settings_click(self, x: int, y: int):
@@ -672,6 +752,19 @@ class SidebarMixin:
             self.settings.force_variation = not self.settings.force_variation
         elif 'coord_check' in self.settings_ui and self.settings_ui['coord_check'].collidepoint(x, y):
             self.settings.show_coord_points = not self.settings.show_coord_points
+        elif self.settings_ui.get('preset_0') and self.settings_ui['preset_0'].collidepoint(x, y):
+            # 初级：1秒 / 5层 / 1级 / MultiPV1，强制变着开
+            self._set_preset(1, 5, 1, 1, True)
+        elif self.settings_ui.get('preset_1') and self.settings_ui['preset_1'].collidepoint(x, y):
+            # 高手：3秒 / 20层 / 10级 / MultiPV1，强制变着开
+            self._set_preset(3, 20, 10, 1, True)
+        elif self.settings_ui.get('preset_2') and self.settings_ui['preset_2'].collidepoint(x, y):
+            # 解题：5秒 / 60层 / 20级 / MultiPV1，强制变着关
+            self._set_preset(5, 60, 20, 1, False)
+        elif self.settings_ui.get('preset_3') and self.settings_ui['preset_3'].collidepoint(x, y):
+            # 飘逸：10秒 / 120层 / 20级 / MultiPV3，强制变着关（红字性能警告）
+            self._set_preset(10, 120, 20, 3, False)
+            self.show_toast('⚠ 飘逸：10秒 / 深度120 / MultiPV3，计算量极大，可能卡顿', 3.5)
         elif 'save' in self.settings_ui and self.settings_ui['save'].collidepoint(x, y):
             self._apply_settings_now()
             self.show_settings = False

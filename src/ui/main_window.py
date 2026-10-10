@@ -164,6 +164,11 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
         self.show_settings = False
         self.settings_sliders = []
         self.settings_drag_key = None
+        self.settings_scroll = 0
+        self.settings_max_scroll = 0
+        self.settings_scroll_dragging = False
+        self.settings_scroll_drag_offset = 0
+        self.settings_viewport = None
         self.modal = None
         self.toast = None
         self.toast_until = 0
@@ -494,6 +499,15 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     # 候选列表滚动条拖拽
                     if self.candidate_dragging and self.candidate_max_scroll > 0:
                         self._candidate_scroll_to_y(event.pos[1])
+                    # 设置面板滚动条拖拽
+                    if self.settings_scroll_dragging and self.settings_viewport is not None:
+                        vp = self.settings_viewport
+                        max_scroll = self.settings_max_scroll
+                        if max_scroll > 0:
+                            thumb_h = max(24, int(vp.height * (vp.height / (vp.height + max_scroll))))
+                            ty = event.pos[1] - self.settings_scroll_drag_offset
+                            ratio = max(0.0, min(1.0, (ty - vp.y) / (vp.height - thumb_h)))
+                            self.settings_scroll = max(0, min(max_scroll, int(ratio * max_scroll)))
                 elif event.type == pygame.MOUSEBUTTONUP:
                     if self.settings_drag_key is not None and self.show_settings:
                         # 滑块拖拽结束：把新值立即同步给对局与引擎并持久化
@@ -503,6 +517,7 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                     self.settings_drag_key = None
                     self._edit_dragging = False
                     self.candidate_dragging = False
+                    self.settings_scroll_dragging = False
                 elif event.type == pygame.MOUSEWHEEL:
                     if self.file_dialog:
                         self._handle_file_dialog_wheel(event)
@@ -510,24 +525,29 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                         max_scroll = max(0, self.edit_content_bottom - self.edit_vp.bottom)
                         if max_scroll > 0:
                             self.edit_scroll = max(0, min(max_scroll, self.edit_scroll - event.y * 40))
-                    elif self.simulating:
+                    elif self.simulating and not self.show_settings:
                         # 模拟面板：滚轮滚动推荐线列表
                         y0 = self.board_offset_y + self.board_height
                         if y0 <= self.mouse_pos[1] <= y0 + self.eval_bottom_h:
                             self.sim_scroll = max(0, self.sim_scroll - event.y * 24)
-                    elif getattr(self, 'ai_lines', None) and self.candidate_max_scroll > 0:
+                    elif getattr(self, 'ai_lines', None) and self.candidate_max_scroll > 0 and not self.show_settings:
                         # 候选列表滚轮滚动
                         y0 = self.board_offset_y + self.board_height
                         if y0 <= self.mouse_pos[1] <= y0 + self.eval_bottom_h:
                             self.candidate_scroll = max(
                                 0, min(self.candidate_max_scroll,
                                        self.candidate_scroll - event.y * 30))
-                    elif getattr(self, '_move_row_rects', None) and self._move_max_scroll > 0:
+                    elif getattr(self, '_move_row_rects', None) and self._move_max_scroll > 0 and not self.show_settings:
                         # 棋谱列表滚轮滚动（鼠标位于侧栏区域时）
                         if self.mouse_pos[0] >= self.board_width:
                             self._move_scroll = max(
                                 0, min(self._move_max_scroll,
                                        self._move_scroll - event.y * 28))
+                    elif self.show_settings and getattr(self, 'settings_max_scroll', 0) > 0:
+                        # 设置面板：滚轮滚动内容区
+                        self.settings_scroll = max(
+                            0, min(self.settings_max_scroll,
+                                   self.settings_scroll - event.y * 40))
                 elif event.type == pygame.KEYDOWN:
                     if self.file_dialog:
                         self._handle_file_dialog_key(event)
@@ -551,7 +571,9 @@ class MainWindow(BoardInteractionMixin, DialogsMixin, DrawHelpersMixin, EditPane
                         self._handle_file_dialog_click(x, y)
                         continue
                     if self.show_settings:
-                        if not self._settings_slider_down(x, y):
+                        if self._settings_scrollbar_down(x, y):
+                            pass
+                        elif not self._settings_slider_down(x, y):
                             self.handle_settings_click(x, y)
                     else:
                         # 优先判定候选列表滚动条，命中则吞掉本次点击

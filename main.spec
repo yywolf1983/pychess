@@ -37,3 +37,9 @@ exe = EXE(
     entitlements_file=None,
     icon=['logo.ico'],
 )
+app = BUNDLE(
+    exe,
+    name='main.app',
+    icon='logo.ico',
+    bundle_identifier=None,
+)
